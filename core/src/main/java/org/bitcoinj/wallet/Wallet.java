@@ -511,7 +511,7 @@ public class Wallet extends BaseTaggableObject
                 }
             }
         };
-        acceptRiskyTransactions = false;
+        acceptRiskyTransactions =true;
     }
 
     public NetworkParameters getNetworkParameters() {
