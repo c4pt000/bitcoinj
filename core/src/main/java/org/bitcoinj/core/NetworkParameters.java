@@ -115,11 +115,13 @@ public abstract class NetworkParameters {
             //
             //   "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
             byte[] bytes = Utils.HEX.decode
-                    ("04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73");
+                    ("04f0ff0f1e010410526164696f436f696e2077616c6c6574");
+//04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73");
             t.addInput(new TransactionInput(n, t, bytes));
             ByteArrayOutputStream scriptPubKeyBytes = new ByteArrayOutputStream();
             Script.writeBytes(scriptPubKeyBytes, Utils.HEX.decode
-                    ("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"));
+                    ("046b8e36534122449a1d0c0c2b380647b23b562fb0be95b698596a2507eb6aa5c5dba4294bc39f31b3b2351994673ce150449ad83bce4b7624b7c488f6ca23aa71"));
+//04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"));
             scriptPubKeyBytes.write(ScriptOpCodes.OP_CHECKSIG);
             t.addOutput(new TransactionOutput(n, t, FIFTY_COINS, scriptPubKeyBytes.toByteArray()));
         } catch (Exception e) {
@@ -130,8 +132,8 @@ public abstract class NetworkParameters {
         return genesisBlock;
     }
 
-    public static final int TARGET_TIMESPAN = 14 * 24 * 60 * 60;  // 2 weeks per difficulty cycle, on average.
-    public static final int TARGET_SPACING = 10 * 60;  // 10 minutes per block.
+    public static final int TARGET_TIMESPAN = 4 * 60 * 60;  // 4 hours on average.
+    public static final int TARGET_SPACING = 1 * 60;  // 1 minutes per block.
     public static final int INTERVAL = TARGET_TIMESPAN / TARGET_SPACING;
     
     /**
@@ -144,7 +146,7 @@ public abstract class NetworkParameters {
     /**
      * The maximum number of coins to be generated
      */
-    public static final long MAX_COINS = 21000000;
+    public static final long MAX_COINS = 100000000000;
 
     /**
      * The maximum money to be generated
@@ -486,7 +488,7 @@ public abstract class NetworkParameters {
         BLOOM_FILTER_BIP111(70011), // BIP111
         WITNESS_VERSION(70012),
         FEEFILTER(70013), // BIP133
-        CURRENT(70013);
+        CURRENT(70003);
 
         private final int bitcoinProtocol;
 
