@@ -51,7 +51,8 @@ public abstract class Address extends PrefixedChecksummedBytes {
      * @throws AddressFormatException.WrongNetwork
      *             if the given string is valid but not for the expected network (eg testnet vs mainnet)
      */
-    public static Address fromString(@Nullable NetworkParameters params, String str) throws AddressFormatException {
+  /*
+  public static Address fromString(@Nullable NetworkParameters params, String str) throws AddressFormatException {
        
         /*try {
             return LegacyAddress.fromBase58(params, str);
@@ -67,7 +68,7 @@ public abstract class Address extends PrefixedChecksummedBytes {
             }
        }
        
-       */ 
+        
         int a = 1;
          if (a > 0)
             return LegacyAddress.fromBase58(params, str);
@@ -75,7 +76,7 @@ public abstract class Address extends PrefixedChecksummedBytes {
             return SegwitAddress.fromBech32(params, str);
         
     }
-
+*/
     /**
      * Construct an {@link Address} that represents the public part of the given {@link ECKey}.
      * 
