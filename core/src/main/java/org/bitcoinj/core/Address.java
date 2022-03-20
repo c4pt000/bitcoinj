@@ -68,6 +68,11 @@ public abstract class Address extends PrefixedChecksummedBytes {
        }
        
        */ 
+         if (outputScriptType == Script.ScriptType.P2PKH)
+            return LegacyAddress.fromBase58(params, str);
+        else if (outputScriptType == Script.ScriptType.P2WPKH)
+            return SegwitAddress.fromBech32(params, str);
+        
     }
 
     /**
