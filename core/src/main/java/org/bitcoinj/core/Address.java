@@ -68,7 +68,7 @@ public abstract class Address extends PrefixedChecksummedBytes {
        }
        
        */ 
-   // }
+    }
 
     /**
      * Construct an {@link Address} that represents the public part of the given {@link ECKey}.
