@@ -493,7 +493,7 @@ public class Peer extends PeerSocketHandler {
         } else if (m instanceof UTXOsMessage) {
             processUTXOMessage((UTXOsMessage) m);
         } else if (m instanceof RejectMessage) {
-            log.error("{} {}: Received {}", this, getPeerVersionMessage().subVer, m);
+            //log.error("{} {}: Received {}", this, getPeerVersionMessage().subVer, m);
         } else if (m instanceof SendHeadersMessage) {
             // We ignore this message, because we don't announce new blocks.
         } else if (m instanceof FeeFilterMessage) {
