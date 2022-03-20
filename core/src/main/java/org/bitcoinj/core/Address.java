@@ -57,12 +57,12 @@ public abstract class Address extends PrefixedChecksummedBytes {
         try {
             return LegacyAddress.fromBase58(params, str);
         } catch (AddressFormatException.WrongNetwork x) {
-           System.out.println("would have thrown an exception here as throw x");
+            throw null;
         } catch (AddressFormatException x) {
             try {
                 return SegwitAddress.fromBech32(params, str);
             } catch (AddressFormatException.WrongNetwork x2) {
-           System.out.println("would have thrown an exception here as throw x");
+                throw null;
             } catch (AddressFormatException x2) {
                 throw new AddressFormatException(str);
             }
