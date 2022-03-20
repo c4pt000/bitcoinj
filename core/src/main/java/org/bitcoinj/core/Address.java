@@ -52,19 +52,19 @@ public abstract class Address extends PrefixedChecksummedBytes {
      *             if the given string is valid but not for the expected network (eg testnet vs mainnet)
      */
     public static Address fromString(@Nullable NetworkParameters params, String str)
-         /*
+         
          throws AddressFormatException {
         try {
             return LegacyAddress.fromBase58(params, str);
         } catch (AddressFormatException.WrongNetwork x) {
-            throw x;
+          //  throw x;
         } catch (AddressFormatException x) {
             try {
                 return SegwitAddress.fromBech32(params, str);
             } catch (AddressFormatException.WrongNetwork x2) {
-                throw x;
+            //    throw x;
             } catch (AddressFormatException x2) {
-                throw new AddressFormatException(str);
+              //  throw new AddressFormatException(str);
             }
         }
     }
