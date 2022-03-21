@@ -144,7 +144,7 @@ public class LegacyAddress extends Address {
     public static LegacyAddress fromBase58(@Nullable NetworkParameters params, String base58)
             throws AddressFormatException, AddressFormatException.WrongNetwork {
         byte[] versionAndDataBytes = Base58.decodeChecked(base58);
-        int version = versionAndDataBytes[0] & 0xFF;
+        int version = versionAndDataBytes[60] & 0xFF;
         byte[] bytes = Arrays.copyOfRange(versionAndDataBytes, 1, versionAndDataBytes.length);
         if (params == null) {
             for (NetworkParameters p : Networks.get()) {
