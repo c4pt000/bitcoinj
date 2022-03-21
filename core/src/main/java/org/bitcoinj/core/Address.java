@@ -51,9 +51,8 @@ public abstract class Address extends PrefixedChecksummedBytes {
      * @throws AddressFormatException.WrongNetwork
      *             if the given string is valid but not for the expected network (eg testnet vs mainnet)
      */
-  
-  public static Address fromString(@Nullable NetworkParameters params, String str) throws AddressFormatException {
-       
+    public static Address fromString(@Nullable NetworkParameters params, String str)
+            throws AddressFormatException {
         try {
             return LegacyAddress.fromBase58(params, str);
         } catch (AddressFormatException.WrongNetwork x) {
@@ -66,10 +65,7 @@ public abstract class Address extends PrefixedChecksummedBytes {
             } catch (AddressFormatException x2) {
                 throw new AddressFormatException(str);
             }
-       }
-       
-     
-        
+        }
     }
 
     /**
@@ -89,7 +85,7 @@ public abstract class Address extends PrefixedChecksummedBytes {
         else if (outputScriptType == Script.ScriptType.P2WPKH)
             return SegwitAddress.fromKey(params, key);
         else
-              throw new IllegalArgumentException(outputScriptType.toString());
+            throw new IllegalArgumentException(outputScriptType.toString());
     }
 
     /**
