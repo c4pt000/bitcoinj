@@ -8,6 +8,7 @@ archivesBaseName = 'bitcoinj-core'
 eclipse.project.name = 'bitcoinj-core'
 
 dependencies {
+classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.13'
     compile 'org.bouncycastle:bcprov-jdk15to18:1.68'
     implementation 'com.google.guava:guava:28.2-android'
     compile 'com.google.protobuf:protobuf-java:3.6.1'
