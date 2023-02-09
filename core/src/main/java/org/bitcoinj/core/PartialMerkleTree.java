@@ -18,14 +18,19 @@
 
 package org.bitcoinj.core;
 
+import org.bitcoinj.base.Sha256Hash;
+import org.bitcoinj.base.utils.ByteUtils;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
-import static org.bitcoinj.core.Utils.*;
-import com.google.common.base.Objects;
+import static org.bitcoinj.base.utils.ByteUtils.checkBitLE;
+import static org.bitcoinj.base.utils.ByteUtils.reverseBytes;
+import static org.bitcoinj.base.utils.ByteUtils.uint32ToByteStreamLE;
 
 /**
  * <p>A data structure that contains proofs of block inclusion for one or more transactions, in an efficient manner.</p>
@@ -97,7 +102,7 @@ public class PartialMerkleTree extends Message {
         byte[] bits = new byte[(int)Math.ceil(bitList.size() / 8.0)];
         for (int i = 0; i < bitList.size(); i++)
             if (bitList.get(i))
-                Utils.setBitLE(bits, i);
+                ByteUtils.setBitLE(bits, i);
         return new PartialMerkleTree(params, bits, hashes, allLeafHashes.size());
     }
 
@@ -134,7 +139,7 @@ public class PartialMerkleTree extends Message {
         boolean parentOfMatch = false;
         // Is this node a parent of at least one matched hash?
         for (int p = pos << height; p < (pos+1) << height && p < allLeafHashes.size(); p++) {
-            if (Utils.checkBitLE(includeBits, p)) {
+            if (ByteUtils.checkBitLE(includeBits, p)) {
                 parentOfMatch = true;
                 break;
             }
@@ -275,7 +280,7 @@ public class PartialMerkleTree extends Message {
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(transactionCount, hashes, Arrays.hashCode(matchedChildBits));
+        return Objects.hash(transactionCount, hashes, Arrays.hashCode(matchedChildBits));
     }
 
     @Override

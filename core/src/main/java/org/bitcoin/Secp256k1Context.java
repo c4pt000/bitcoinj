@@ -19,11 +19,11 @@ package org.bitcoin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.security.AccessControlException;
-
 /**
  * This class holds the context reference used in native methods to handle ECDSA operations.
+ * @deprecated See https://github.com/bitcoinj/bitcoinj/issues/2267
  */
+@Deprecated
 public class Secp256k1Context {
 
     private static final boolean enabled; // true if the library is loaded
@@ -37,7 +37,7 @@ public class Secp256k1Context {
         try {
             System.loadLibrary("secp256k1");
             contextRef = secp256k1_init_context();
-        } catch (UnsatisfiedLinkError | AccessControlException e) {
+        } catch (UnsatisfiedLinkError | SecurityException e) {
             log.debug(e.toString());
             isEnabled = false;
         }
@@ -45,10 +45,16 @@ public class Secp256k1Context {
         context = contextRef;
     }
 
+    /**
+     * @return true if enabled
+     */
     public static boolean isEnabled() {
         return enabled;
     }
 
+    /**
+     * @return context reference
+     */
     public static long getContext() {
         if (!enabled)
             return -1; // sanity check

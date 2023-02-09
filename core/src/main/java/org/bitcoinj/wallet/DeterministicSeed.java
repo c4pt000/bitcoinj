@@ -17,24 +17,26 @@
 
 package org.bitcoinj.wallet;
 
-import org.bitcoinj.core.Utils;
-import org.bitcoinj.crypto.*;
-
 import com.google.common.base.MoreObjects;
-import com.google.common.base.Objects;
-import com.google.common.base.Splitter;
+import org.bitcoinj.core.Utils;
+import org.bitcoinj.core.internal.InternalUtils;
+import org.bitcoinj.crypto.EncryptableItem;
+import org.bitcoinj.crypto.EncryptedData;
+import org.bitcoinj.crypto.KeyCrypter;
+import org.bitcoinj.crypto.MnemonicCode;
+import org.bitcoinj.crypto.MnemonicException;
 import org.bouncycastle.crypto.params.KeyParameter;
 
 import javax.annotation.Nullable;
-
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.List;
+import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import static org.bitcoinj.core.Utils.HEX;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
+import static org.bitcoinj.base.utils.ByteUtils.HEX;
 
 /**
  * Holds the seed bytes for the BIP32 deterministic wallet algorithm, inside a
@@ -52,8 +54,8 @@ public class DeterministicSeed implements EncryptableItem {
     @Nullable private final EncryptedData encryptedSeed;
     private long creationTimeSeconds;
 
-    public DeterministicSeed(String mnemonicCode, byte[] seed, String passphrase, long creationTimeSeconds) throws UnreadableWalletException {
-        this(decodeMnemonicCode(mnemonicCode), seed, passphrase, creationTimeSeconds);
+    public DeterministicSeed(String mnemonicString, byte[] seed, String passphrase, long creationTimeSeconds) throws UnreadableWalletException {
+        this(decodeMnemonicCode(mnemonicString), seed, passphrase, creationTimeSeconds);
     }
 
     public DeterministicSeed(byte[] seed, List<String> mnemonic, long creationTimeSeconds) {
@@ -139,11 +141,11 @@ public class DeterministicSeed implements EncryptableItem {
     }
 
     public String toString(boolean includePrivate) {
-        MoreObjects.ToStringHelper helper = MoreObjects.toStringHelper(this);
+        MoreObjects.ToStringHelper helper = MoreObjects.toStringHelper(this).omitNullValues();
         if (isEncrypted())
             helper.addValue("encrypted");
         else if (includePrivate)
-            helper.addValue(toHexString()).add("mnemonicCode", Utils.SPACE_JOINER.join(mnemonicCode));
+            helper.addValue(toHexString()).add("mnemonicCode", getMnemonicString());
         else
             helper.addValue("unencrypted");
         return helper.toString();
@@ -200,7 +202,7 @@ public class DeterministicSeed implements EncryptableItem {
     }
 
     private byte[] getMnemonicAsBytes() {
-        return Utils.SPACE_JOINER.join(mnemonicCode).getBytes(StandardCharsets.UTF_8);
+        return getMnemonicString().getBytes(StandardCharsets.UTF_8);
     }
 
     public DeterministicSeed decrypt(KeyCrypter crypter, String passphrase, KeyParameter aesKey) {
@@ -217,13 +219,13 @@ public class DeterministicSeed implements EncryptableItem {
         if (o == null || getClass() != o.getClass()) return false;
         DeterministicSeed other = (DeterministicSeed) o;
         return creationTimeSeconds == other.creationTimeSeconds
-            && Objects.equal(encryptedMnemonicCode, other.encryptedMnemonicCode)
-            && Objects.equal(mnemonicCode, other.mnemonicCode);
+            && Objects.equals(encryptedMnemonicCode, other.encryptedMnemonicCode)
+            && Objects.equals(mnemonicCode, other.mnemonicCode);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(creationTimeSeconds, encryptedMnemonicCode, mnemonicCode);
+        return Objects.hash(creationTimeSeconds, encryptedMnemonicCode, mnemonicCode);
     }
 
     /**
@@ -247,11 +249,17 @@ public class DeterministicSeed implements EncryptableItem {
         return mnemonicCode;
     }
 
+    /** Get the mnemonic code as string, or null if unknown. */
+    @Nullable
+    public String getMnemonicString() {
+        return mnemonicCode != null ? InternalUtils.SPACE_JOINER.join(mnemonicCode) : null;
+    }
+
     private static List<String> decodeMnemonicCode(byte[] mnemonicCode) {
         return decodeMnemonicCode(new String(mnemonicCode, StandardCharsets.UTF_8));
     }
 
     private static List<String> decodeMnemonicCode(String mnemonicCode) {
-        return Splitter.on(" ").splitToList(mnemonicCode);
+        return InternalUtils.WHITESPACE_SPLITTER.splitToList(mnemonicCode);
     }
 }

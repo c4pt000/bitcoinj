@@ -17,14 +17,22 @@
 
 package org.bitcoinj.net.discovery;
 
-import org.bitcoinj.core.*;
-import org.bitcoinj.utils.*;
+import org.bitcoinj.core.NetworkParameters;
+import org.bitcoinj.core.Utils;
+import org.bitcoinj.core.VersionMessage;
+import org.bitcoinj.utils.ContextPropagatingThreadFactory;
+import org.bitcoinj.utils.DaemonThreadFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.*;
-import java.util.*;
-import java.util.concurrent.*;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * <p>Supports peer discovery through DNS.</p>
@@ -88,7 +96,7 @@ public class DnsDiscovery extends MultiplexingDiscovery {
         }
 
         @Override
-        public InetSocketAddress[] getPeers(long services, long timeoutValue, TimeUnit timeoutUnit) throws PeerDiscoveryException {
+        public List<InetSocketAddress> getPeers(long services, long timeoutValue, TimeUnit timeoutUnit) throws PeerDiscoveryException {
             InetAddress[] response = null;
             if (services != 0) {
                 String hostnameWithServices = "x" + Long.toHexString(services) + "." + hostname;
@@ -111,9 +119,9 @@ public class DnsDiscovery extends MultiplexingDiscovery {
                 }
             }
 
-            InetSocketAddress[] result = new InetSocketAddress[response.length];
-            for (int i = 0; i < response.length; i++)
-                result[i] = new InetSocketAddress(response[i], params.getPort());
+            List<InetSocketAddress> result = new ArrayList<>(response.length);
+            for (InetAddress r : response)
+                result.add(new InetSocketAddress(r, params.getPort()));
             return result;
         }
 

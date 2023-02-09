@@ -17,17 +17,28 @@
 
 package org.bitcoinj.core;
 
-import com.google.common.base.Objects;
-import org.bitcoinj.script.*;
+import org.bitcoinj.base.Coin;
+import org.bitcoinj.base.ScriptType;
+import org.bitcoinj.base.Sha256Hash;
+import org.bitcoinj.base.utils.ByteUtils;
+import org.bitcoinj.script.Script;
+import org.bitcoinj.script.ScriptBuilder;
+import org.bitcoinj.script.ScriptException;
+import org.bitcoinj.script.ScriptPattern;
 import org.bitcoinj.wallet.Wallet;
-import org.slf4j.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import javax.annotation.*;
-import java.io.*;
+import javax.annotation.Nullable;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
-import static com.google.common.base.Preconditions.*;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * <p>A TransactionOutput message contains a scriptPubKey that controls who is able to spend its value. It is a sub-part
@@ -54,8 +65,6 @@ public class TransactionOutput extends ChildMessage {
     // us and used in one of our own transactions (eg, because it is a change output).
     private boolean availableForSpending;
     @Nullable private TransactionInput spentBy;
-
-    private int scriptLen;
 
     /**
      * Deserializes a transaction output message. This is usually part of a transaction message.
@@ -104,7 +113,7 @@ public class TransactionOutput extends ChildMessage {
         // Negative values obviously make no sense, except for -1 which is used as a sentinel value when calculating
         // SIGHASH_SINGLE signatures, so unfortunately we have to allow that here.
         checkArgument(value.signum() >= 0 || value.equals(Coin.NEGATIVE_SATOSHI), "Negative values not allowed");
-        checkArgument(!params.hasMaxMoney() || value.compareTo(params.getMaxMoney()) <= 0, "Values larger than MAX_MONEY not allowed");
+        checkArgument(!params.network().exceedsMaxMoney(value), "Values larger than MAX_MONEY not allowed");
         this.value = value.value;
         this.scriptBytes = scriptBytes;
         setParent(parent);
@@ -119,23 +128,6 @@ public class TransactionOutput extends ChildMessage {
         return scriptPubKey;
     }
 
-    @Nullable
-    @Deprecated
-    public LegacyAddress getAddressFromP2PKHScript(NetworkParameters params) throws ScriptException {
-        if (ScriptPattern.isP2PKH(getScriptPubKey()))
-            return LegacyAddress.fromPubKeyHash(params,
-                    ScriptPattern.extractHashFromP2PKH(getScriptPubKey()));
-        return null;
-    }
-
-    @Nullable
-    @Deprecated
-    public LegacyAddress getAddressFromP2SH(NetworkParameters params) throws ScriptException {
-        if (ScriptPattern.isP2SH(getScriptPubKey()))
-            return LegacyAddress.fromScriptHash(params, ScriptPattern.extractHashFromP2SH(getScriptPubKey()));
-        return null;
-    }
-
     @Override
     protected void parse() throws ProtocolException {
         value = readInt64();
@@ -147,7 +139,7 @@ public class TransactionOutput extends ChildMessage {
     @Override
     protected void bitcoinSerializeToStream(OutputStream stream) throws IOException {
         checkNotNull(scriptBytes);
-        Utils.int64ToByteStreamLE(value, stream);
+        ByteUtils.int64ToByteStreamLE(value, stream);
         // TODO: Move script serialization into the Script class, where it belongs.
         stream.write(new VarInt(scriptBytes.length).encode());
         stream.write(scriptBytes);
@@ -158,11 +150,7 @@ public class TransactionOutput extends ChildMessage {
      * receives.
      */
     public Coin getValue() {
-        try {
-            return Coin.valueOf(value);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalStateException(e.getMessage(), e);
-        }
+        return Coin.valueOf(value);
     }
 
     /**
@@ -199,10 +187,7 @@ public class TransactionOutput extends ChildMessage {
 
     /**
      * <p>Gets the minimum value for a txout of this size to be considered non-dust by Bitcoin Core
-     * (and thus relayed). See: CTxOut::IsDust() in Bitcoin Core. The assumption is that any output that would
-     * consume more than a third of its value in fees is not something the Bitcoin system wants to deal with right now,
-     * so we call them "dust outputs" and they're made non standard. The choice of one third is somewhat arbitrary and
-     * may change in future.</p>
+     * (and thus relayed). See: CTxOut::IsDust() in Bitcoin Core.</p>
      *
      * <p>You probably should use {@link TransactionOutput#getMinNonDustValue()} which uses
      * a safe fee-per-kb by default.</p>
@@ -210,19 +195,34 @@ public class TransactionOutput extends ChildMessage {
      * @param feePerKb The fee required per kilobyte. Note that this is the same as Bitcoin Core's -minrelaytxfee * 3
      */
     public Coin getMinNonDustValue(Coin feePerKb) {
-        // A typical output is 33 bytes (pubkey hash + opcodes) and requires an input of 148 bytes to spend so we add
-        // that together to find out the total amount of data used to transfer this amount of value. Note that this
-        // formula is wrong for anything that's not a P2PKH output, unfortunately, we must follow Bitcoin Core's
-        // wrongness in order to ensure we're considered standard. A better formula would either estimate the
-        // size of data needed to satisfy all different script types, or just hard code 33 below.
-        final long size = this.unsafeBitcoinSerialize().length + 148;
+        // "Dust" is defined in terms of dustRelayFee,
+        // which has units satoshis-per-kilobyte.
+        // If you'd pay more in fees than the value of the output
+        // to spend something, then we consider it dust.
+        // A typical spendable non-segwit txout is 34 bytes big, and will
+        // need a CTxIn of at least 148 bytes to spend:
+        // so dust is a spendable txout less than
+        // 182*dustRelayFee/1000 (in satoshis).
+        // 546 satoshis at the default rate of 3000 sat/kB.
+        // A typical spendable segwit txout is 31 bytes big, and will
+        // need a CTxIn of at least 67 bytes to spend:
+        // so dust is a spendable txout less than
+        // 98*dustRelayFee/1000 (in satoshis).
+        // 294 satoshis at the default rate of 3000 sat/kB.
+        long size = this.unsafeBitcoinSerialize().length;
+        final Script script = getScriptPubKey();
+        if (ScriptPattern.isP2PKH(script) || ScriptPattern.isP2PK(script) || ScriptPattern.isP2SH(script))
+            size += 32 + 4 + 1 + 107 + 4; // 148
+        else if (ScriptPattern.isP2WH(script))
+            size += 32 + 4 + 1 + (107 / 4) + 4; // 68
+        else
+            return Coin.ZERO;
         return feePerKb.multiply(size).divide(1000);
     }
 
     /**
      * Returns the minimum value for this output to be considered "not dust", i.e. the transaction will be relayable
-     * and mined by default miners. For normal pay to address outputs, this is 2730 satoshis, the same as
-     * {@link Transaction#MIN_NONDUST_OUTPUT}.
+     * and mined by default miners.
      */
     public Coin getMinNonDustValue() {
         return getMinNonDustValue(Transaction.REFERENCE_DEFAULT_MIN_TX_FEE.multiply(3));
@@ -307,10 +307,10 @@ public class TransactionOutput extends ChildMessage {
                 return transactionBag.isPayToScriptHashMine(ScriptPattern.extractHashFromP2SH(script));
             else if (ScriptPattern.isP2PKH(script))
                 return transactionBag.isPubKeyHashMine(ScriptPattern.extractHashFromP2PKH(script),
-                        Script.ScriptType.P2PKH);
+                        ScriptType.P2PKH);
             else if (ScriptPattern.isP2WPKH(script))
                 return transactionBag.isPubKeyHashMine(ScriptPattern.extractHashFromP2WH(script),
-                        Script.ScriptType.P2WPKH);
+                        ScriptType.P2WPKH);
             else
                 return false;
         } catch (ScriptException e) {
@@ -330,11 +330,11 @@ public class TransactionOutput extends ChildMessage {
             Script script = getScriptPubKey();
             StringBuilder buf = new StringBuilder("TxOut of ");
             buf.append(Coin.valueOf(value).toFriendlyString());
-            if (ScriptPattern.isP2PKH(script) || ScriptPattern.isP2WPKH(script)
+            if (ScriptPattern.isP2PKH(script) || ScriptPattern.isP2WPKH(script) || ScriptPattern.isP2TR(script)
                     || ScriptPattern.isP2SH(script))
                 buf.append(" to ").append(script.getToAddress(params));
             else if (ScriptPattern.isP2PK(script))
-                buf.append(" to pubkey ").append(Utils.HEX.encode(ScriptPattern.extractKeyFromP2PK(script)));
+                buf.append(" to pubkey ").append(ByteUtils.HEX.encode(ScriptPattern.extractKeyFromP2PK(script)));
             else if (ScriptPattern.isSentToMultisig(script))
                 buf.append(" to multisig");
             else
@@ -411,6 +411,6 @@ public class TransactionOutput extends ChildMessage {
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(value, parent, Arrays.hashCode(scriptBytes));
+        return Objects.hash(value, parent, Arrays.hashCode(scriptBytes));
     }
 }

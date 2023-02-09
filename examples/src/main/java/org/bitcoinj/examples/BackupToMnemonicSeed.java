@@ -16,8 +16,9 @@
 
 package org.bitcoinj.examples;
 
+import org.bitcoinj.base.ScriptType;
 import org.bitcoinj.core.NetworkParameters;
-import org.bitcoinj.core.Utils;
+import org.bitcoinj.core.internal.InternalUtils;
 import org.bitcoinj.params.TestNet3Params;
 import org.bitcoinj.wallet.DeterministicSeed;
 import org.bitcoinj.wallet.Wallet;
@@ -35,12 +36,12 @@ public class BackupToMnemonicSeed {
     public static void main(String[] args) {
 
         NetworkParameters params = TestNet3Params.get();
-        Wallet wallet = new Wallet(params);
+        Wallet wallet = Wallet.createDeterministic(params, ScriptType.P2PKH);
 
         DeterministicSeed seed = wallet.getKeyChainSeed();
         System.out.println("seed: " + seed.toString());
 
         System.out.println("creation time: " + seed.getCreationTimeSeconds());
-        System.out.println("mnemonicCode: " + Utils.SPACE_JOINER.join(seed.getMnemonicCode()));
+        System.out.println("mnemonicCode: " + InternalUtils.SPACE_JOINER.join(seed.getMnemonicCode()));
     }
 }

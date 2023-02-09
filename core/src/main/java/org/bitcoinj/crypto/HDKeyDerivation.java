@@ -16,16 +16,20 @@
 
 package org.bitcoinj.crypto;
 
-import com.google.common.collect.*;
-import org.bitcoinj.core.*;
-import org.bouncycastle.math.ec.*;
+import org.bitcoinj.base.utils.ByteUtils;
+import org.bitcoinj.core.ECKey;
+import org.bitcoinj.core.Utils;
+import org.bouncycastle.math.ec.ECPoint;
 
-import java.math.*;
-import java.nio.*;
-import java.security.*;
-import java.util.*;
+import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.security.SecureRandom;
+import java.util.Arrays;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 
-import static com.google.common.base.Preconditions.*;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * Implementation of the <a href="https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki">BIP 32</a>
@@ -33,10 +37,6 @@ import static com.google.common.base.Preconditions.*;
  */
 public final class HDKeyDerivation {
     static {
-        // Init proper random number generator, as some old Android installations have bugs that make it unsecure.
-        if (Utils.isAndroidRuntime())
-            new LinuxSecureRandom();
-
         RAND_INT = new BigInteger(256, new SecureRandom());
     }
 
@@ -81,25 +81,15 @@ public final class HDKeyDerivation {
     /**
      * @throws HDDerivationException if privKeyBytes is invalid (not between 0 and n inclusive).
      */
-    public static DeterministicKey createMasterPrivKeyFromBytes(byte[] privKeyBytes, byte[] chainCode)
-            throws HDDerivationException {
-        // childNumberPath is an empty list because we are creating the root key.
-        return createMasterPrivKeyFromBytes(privKeyBytes, chainCode, ImmutableList.<ChildNumber> of());
-    }
-
-    /**
-     * @throws HDDerivationException if privKeyBytes is invalid (not between 0 and n inclusive).
-     */
-    public static DeterministicKey createMasterPrivKeyFromBytes(byte[] privKeyBytes, byte[] chainCode,
-            ImmutableList<ChildNumber> childNumberPath) throws HDDerivationException {
-        BigInteger priv = new BigInteger(1, privKeyBytes);
+    public static DeterministicKey createMasterPrivKeyFromBytes(byte[] privKeyBytes, byte[] chainCode) throws HDDerivationException {
+        BigInteger priv = ByteUtils.bytesToBigInteger(privKeyBytes);
         assertNonZero(priv, "Generated master key is invalid.");
         assertLessThanN(priv, "Generated master key is invalid.");
-        return new DeterministicKey(childNumberPath, chainCode, priv, null);
+        return new DeterministicKey(HDPath.m(), chainCode, priv, null);
     }
 
     public static DeterministicKey createMasterPubKeyFromBytes(byte[] pubKeyBytes, byte[] chainCode) {
-        return new DeterministicKey(ImmutableList.<ChildNumber>of(), chainCode, new LazyECPoint(ECKey.CURVE.getCurve(), pubKeyBytes), null, null);
+        return new DeterministicKey(HDPath.M(), chainCode, new LazyECPoint(ECKey.CURVE.getCurve(), pubKeyBytes), null, null);
     }
 
     /**
@@ -134,26 +124,33 @@ public final class HDKeyDerivation {
     }
 
     /**
+     * Generate an infinite stream of {@link DeterministicKey}s from the given parent and index.
+     * <p>
+     * Note: Use {@link Stream#limit(long)} to get the desired number of keys.
+     * @param parent The parent key
+     * @param childNumber The index of the first child to supply/generate
+     * @return A stream of {@code DeterministicKey}s
+     */
+    public static Stream<DeterministicKey> generate(DeterministicKey parent, int childNumber) {
+        return Stream.generate(new KeySupplier(parent, childNumber));
+    }
+
+    /**
      * @throws HDDerivationException if private derivation is attempted for a public-only parent key, or
      * if the resulting derived key is invalid (eg. private key == 0).
      */
     public static DeterministicKey deriveChildKey(DeterministicKey parent, ChildNumber childNumber) throws HDDerivationException {
-        if (!parent.hasPrivKey()) {
-            RawKeyBytes rawKey = deriveChildKeyBytesFromPublic(parent, childNumber, PublicDeriveMode.NORMAL);
-            return new DeterministicKey(
-                    HDUtils.append(parent.getPath(), childNumber),
-                    rawKey.chainCode,
-                    new LazyECPoint(ECKey.CURVE.getCurve(), rawKey.keyBytes),
-                    null,
-                    parent);
-        } else {
-            RawKeyBytes rawKey = deriveChildKeyBytesFromPrivate(parent, childNumber);
-            return new DeterministicKey(
-                    HDUtils.append(parent.getPath(), childNumber),
-                    rawKey.chainCode,
-                    new BigInteger(1, rawKey.keyBytes),
-                    parent);
-        }
+        if (!parent.hasPrivKey())
+            return deriveChildKeyFromPublic(parent, childNumber, PublicDeriveMode.NORMAL);
+        else
+            return deriveChildKeyFromPrivate(parent, childNumber);
+    }
+
+    public static DeterministicKey deriveChildKeyFromPrivate(DeterministicKey parent, ChildNumber childNumber)
+            throws HDDerivationException {
+        RawKeyBytes rawKey = deriveChildKeyBytesFromPrivate(parent, childNumber);
+        return new DeterministicKey(parent.getPath().extend(childNumber), rawKey.chainCode,
+                ByteUtils.bytesToBigInteger(rawKey.keyBytes), parent);
     }
 
     public static RawKeyBytes deriveChildKeyBytesFromPrivate(DeterministicKey parent,
@@ -172,7 +169,7 @@ public final class HDKeyDerivation {
         checkState(i.length == 64, i.length);
         byte[] il = Arrays.copyOfRange(i, 0, 32);
         byte[] chainCode = Arrays.copyOfRange(i, 32, 64);
-        BigInteger ilInt = new BigInteger(1, il);
+        BigInteger ilInt = ByteUtils.bytesToBigInteger(il);
         assertLessThanN(ilInt, "Illegal derived key: I_L >= n");
         final BigInteger priv = parent.getPrivKey();
         BigInteger ki = priv.add(ilInt).mod(ECKey.CURVE.getN());
@@ -183,6 +180,13 @@ public final class HDKeyDerivation {
     public enum PublicDeriveMode {
         NORMAL,
         WITH_INVERSION
+    }
+
+    public static DeterministicKey deriveChildKeyFromPublic(DeterministicKey parent, ChildNumber childNumber,
+            PublicDeriveMode mode) throws HDDerivationException {
+        RawKeyBytes rawKey = deriveChildKeyBytesFromPublic(parent, childNumber, PublicDeriveMode.NORMAL);
+        return new DeterministicKey(parent.getPath().extend(childNumber), rawKey.chainCode,
+                new LazyECPoint(ECKey.CURVE.getCurve(), rawKey.keyBytes), null, parent);
     }
 
     public static RawKeyBytes deriveChildKeyBytesFromPublic(DeterministicKey parent, ChildNumber childNumber, PublicDeriveMode mode) throws HDDerivationException {
@@ -196,7 +200,7 @@ public final class HDKeyDerivation {
         checkState(i.length == 64, i.length);
         byte[] il = Arrays.copyOfRange(i, 0, 32);
         byte[] chainCode = Arrays.copyOfRange(i, 32, 64);
-        BigInteger ilInt = new BigInteger(1, il);
+        BigInteger ilInt = ByteUtils.bytesToBigInteger(il);
         assertLessThanN(ilInt, "Illegal derived key: I_L >= n");
 
         final BigInteger N = ECKey.CURVE.getN();
@@ -235,6 +239,33 @@ public final class HDKeyDerivation {
     private static void assertLessThanN(BigInteger integer, String errorMessage) {
         if (integer.compareTo(ECKey.CURVE.getN()) > 0)
             throw new HDDerivationException(errorMessage);
+    }
+
+    /**
+     * A supplier of a sequence of {@code DeterministicKey}s generated from a starting
+     * parent and child index.
+     * <p><b>Not threadsafe: Should be used on a single thread</b>
+     */
+    private static class KeySupplier implements Supplier<DeterministicKey> {
+        private final DeterministicKey parent;
+        private int nextChild;
+
+        /**
+         * Construct a key supplier with the specified starting point
+         * @param parent The parent key
+         * @param nextChild The index of the next child to supply/generate
+         */
+        public KeySupplier(DeterministicKey parent, int nextChild) {
+            this.parent = parent;
+            this.nextChild = nextChild;
+        }
+
+        @Override
+        public DeterministicKey get() {
+            DeterministicKey key = HDKeyDerivation.deriveThisOrNextChildKey(parent, nextChild);
+            nextChild = key.getChildNumber().num() + 1;
+            return key;
+        }
     }
 
     public static class RawKeyBytes {

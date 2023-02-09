@@ -16,11 +16,12 @@
 
 package org.bitcoinj.utils;
 
-import java.util.Stack;
 import org.bitcoinj.core.NetworkParameters;
 import org.bitcoinj.core.StoredBlock;
 import org.bitcoinj.store.BlockStore;
 import org.bitcoinj.store.BlockStoreException;
+
+import java.util.Stack;
 
 /**
  * Caching counter for the block versions within a moving window. This class
@@ -79,8 +80,8 @@ public class VersionTally {
             return null;
         }
         int count = 0;
-        for (int versionIdx = 0; versionIdx < versionWindow.length; versionIdx++) {
-            if (versionWindow[versionIdx] >= version) {
+        for (long l : versionWindow) {
+            if (l >= version) {
                 count++;
             }
         }

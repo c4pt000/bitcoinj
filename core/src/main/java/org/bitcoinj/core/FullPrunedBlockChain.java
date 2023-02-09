@@ -17,12 +17,15 @@
 
 package org.bitcoinj.core;
 
+import org.bitcoinj.base.Coin;
+import org.bitcoinj.base.Sha256Hash;
+import org.bitcoinj.params.BitcoinNetworkParams;
 import org.bitcoinj.script.Script;
 import org.bitcoinj.script.Script.VerifyFlag;
 import org.bitcoinj.script.ScriptPattern;
 import org.bitcoinj.store.BlockStoreException;
 import org.bitcoinj.store.FullPrunedBlockStore;
-import org.bitcoinj.utils.*;
+import org.bitcoinj.utils.ContextPropagatingThreadFactory;
 import org.bitcoinj.wallet.Wallet;
 import org.bitcoinj.wallet.WalletExtension;
 import org.slf4j.Logger;
@@ -35,7 +38,12 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Set;
-import java.util.concurrent.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 
 import static com.google.common.base.Preconditions.checkState;
 
@@ -63,50 +71,27 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
      * one from scratch, or you can deserialize a saved wallet from disk using
      * {@link Wallet#loadFromFile(File, WalletExtension...)}
      */
-    public FullPrunedBlockChain(Context context, Wallet wallet, FullPrunedBlockStore blockStore) throws BlockStoreException {
-        this(context, new ArrayList<Wallet>(), blockStore);
-        addWallet(wallet);
-    }
-
-    /**
-     * Constructs a block chain connected to the given wallet and store. To obtain a {@link Wallet} you can construct
-     * one from scratch, or you can deserialize a saved wallet from disk using
-     * {@link Wallet#loadFromFile(File, WalletExtension...)}
-     */
     public FullPrunedBlockChain(NetworkParameters params, Wallet wallet, FullPrunedBlockStore blockStore) throws BlockStoreException {
-        this(Context.getOrCreate(params), wallet, blockStore);
+        this(params, new ArrayList<Wallet>(), blockStore);
+        addWallet(wallet);
     }
 
     /**
      * Constructs a block chain connected to the given store.
      */
-    public FullPrunedBlockChain(Context context, FullPrunedBlockStore blockStore) throws BlockStoreException {
-        this(context, new ArrayList<Wallet>(), blockStore);
-    }
-
-    /**
-     * See {@link #FullPrunedBlockChain(Context, Wallet, FullPrunedBlockStore)}
-     */
     public FullPrunedBlockChain(NetworkParameters params, FullPrunedBlockStore blockStore) throws BlockStoreException {
-        this(Context.getOrCreate(params), blockStore);
+        this(params, new ArrayList<Wallet>(), blockStore);
     }
 
     /**
      * Constructs a block chain connected to the given list of wallets and a store.
      */
-    public FullPrunedBlockChain(Context context, List<Wallet> listeners, FullPrunedBlockStore blockStore) throws BlockStoreException {
-        super(context, listeners, blockStore);
+    public FullPrunedBlockChain(NetworkParameters params, List<Wallet> listeners,
+                                FullPrunedBlockStore blockStore) throws BlockStoreException {
+        super(params, listeners, blockStore);
         this.blockStore = blockStore;
         // Ignore upgrading for now
         this.chainHead = blockStore.getVerifiedChainHead();
-    }
-
-    /**
-     * See {@link #FullPrunedBlockChain(Context, List, FullPrunedBlockStore)}
-     */
-    public FullPrunedBlockChain(NetworkParameters params, List<Wallet> listeners,
-                                FullPrunedBlockStore blockStore) throws BlockStoreException {
-        this(Context.getOrCreate(params), listeners, blockStore);
     }
 
     @Override
@@ -121,7 +106,7 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
     protected StoredBlock addToBlockStore(StoredBlock storedPrev, Block block)
             throws BlockStoreException, VerificationException {
         StoredBlock newBlock = storedPrev.build(block);
-        blockStore.put(newBlock, new StoredUndoableBlock(newBlock.getHeader().getHash(), block.transactions));
+        blockStore.put(newBlock, new StoredUndoableBlock(newBlock.getHeader().getHash(), block.getTransactions()));
         return newBlock;
     }
 
@@ -214,7 +199,7 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
     protected TransactionOutputChanges connectTransactions(int height, Block block)
             throws VerificationException, BlockStoreException {
         checkState(lock.isHeldByCurrentThread());
-        if (block.transactions == null)
+        if (block.getTransactions() == null)
             throw new RuntimeException("connectTransactions called with Block that didn't have transactions!");
         if (!params.passesCheckpoint(height, block.getHash()))
             throw new VerificationException("Block failed checkpoint lockin at " + height);
@@ -228,13 +213,13 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
         if (scriptVerificationExecutor.isShutdown())
             scriptVerificationExecutor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
-        List<Future<VerificationException>> listScriptVerificationResults = new ArrayList<>(block.transactions.size());
+        List<Future<VerificationException>> listScriptVerificationResults = new ArrayList<>(block.getTransactions().size());
         try {
             if (!params.isCheckpoint(height)) {
                 // BIP30 violator blocks are ones that contain a duplicated transaction. They are all in the
                 // checkpoints list and we therefore only check non-checkpoints for duplicated transactions here. See the
                 // BIP30 document for more details on this: https://github.com/bitcoin/bips/blob/master/bip-0030.mediawiki
-                for (Transaction tx : block.transactions) {
+                for (Transaction tx : block.getTransactions()) {
                     final Set<VerifyFlag> verifyFlags = params.getTransactionVerificationFlags(block, tx, getVersionTally(), height);
                     Sha256Hash hash = tx.getTxId();
                     // If we already have unspent outputs for this hash, we saw the tx already. Either the block is
@@ -247,7 +232,7 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
             }
             Coin totalFees = Coin.ZERO;
             Coin coinbaseValue = null;
-            for (final Transaction tx : block.transactions) {
+            for (final Transaction tx : block.getTransactions()) {
                 boolean isCoinBase = tx.isCoinBase();
                 Coin valueIn = Coin.ZERO;
                 Coin valueOut = Coin.ZERO;
@@ -300,12 +285,12 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
                 }
                 // All values were already checked for being non-negative (as it is verified in Transaction.verify())
                 // but we check again here just for defence in depth. Transactions with zero output value are OK.
-                if (valueOut.signum() < 0 || valueOut.compareTo(params.getMaxMoney()) > 0)
+                if (valueOut.signum() < 0 || params.network().exceedsMaxMoney(valueOut))
                     throw new VerificationException("Transaction output value out of range");
                 if (isCoinBase) {
                     coinbaseValue = valueOut;
                 } else {
-                    if (valueIn.compareTo(valueOut) < 0 || valueIn.compareTo(params.getMaxMoney()) > 0)
+                    if (valueIn.compareTo(valueOut) < 0 || params.network().exceedsMaxMoney(valueIn))
                         throw new VerificationException("Transaction input value out of range");
                     totalFees = totalFees.add(valueIn.subtract(valueOut));
                 }
@@ -317,7 +302,7 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
                     listScriptVerificationResults.add(future);
                 }
             }
-            if (totalFees.compareTo(params.getMaxMoney()) > 0 || block.getBlockInflation(height).add(totalFees).compareTo(coinbaseValue) < 0)
+            if (params.network().exceedsMaxMoney(totalFees) || getBlockInflation(height).add(totalFees).compareTo(coinbaseValue) < 0)
                 throw new VerificationException("Transaction fees out of range");
             for (Future<VerificationException> future : listScriptVerificationResults) {
                 VerificationException e;
@@ -332,11 +317,7 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
                 if (e != null)
                     throw e;
             }
-        } catch (VerificationException e) {
-            scriptVerificationExecutor.shutdownNow();
-            blockStore.abortDatabaseBatchWrite();
-            throw e;
-        } catch (BlockStoreException e) {
+        } catch (VerificationException | BlockStoreException e) {
             scriptVerificationExecutor.shutdownNow();
             blockStore.abortDatabaseBatchWrite();
             throw e;
@@ -431,12 +412,12 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
                     }
                     // All values were already checked for being non-negative (as it is verified in Transaction.verify())
                     // but we check again here just for defence in depth. Transactions with zero output value are OK.
-                    if (valueOut.signum() < 0 || valueOut.compareTo(params.getMaxMoney()) > 0)
+                    if (valueOut.signum() < 0 || params.network().exceedsMaxMoney(valueOut))
                         throw new VerificationException("Transaction output value out of range");
                     if (isCoinBase) {
                         coinbaseValue = valueOut;
                     } else {
-                        if (valueIn.compareTo(valueOut) < 0 || valueIn.compareTo(params.getMaxMoney()) > 0)
+                        if (valueIn.compareTo(valueOut) < 0 || params.network().exceedsMaxMoney(valueIn))
                             throw new VerificationException("Transaction input value out of range");
                         totalFees = totalFees.add(valueIn.subtract(valueOut));
                     }
@@ -448,8 +429,7 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
                         listScriptVerificationResults.add(future);
                     }
                 }
-                if (totalFees.compareTo(params.getMaxMoney()) > 0 ||
-                        newBlock.getHeader().getBlockInflation(newBlock.getHeight()).add(totalFees).compareTo(coinbaseValue) < 0)
+                if (params.network().exceedsMaxMoney(totalFees) || getBlockInflation(newBlock.getHeight()).add(totalFees).compareTo(coinbaseValue) < 0)
                     throw new VerificationException("Transaction fees out of range");
                 txOutChanges = new TransactionOutputChanges(txOutsCreated, txOutsSpent);
                 for (Future<VerificationException> future : listScriptVerificationResults) {
@@ -478,11 +458,7 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
                 for (UTXO out : txOutChanges.txOutsSpent)
                     blockStore.removeUnspentTransactionOutput(out);
             }
-        } catch (VerificationException e) {
-            scriptVerificationExecutor.shutdownNow();
-            blockStore.abortDatabaseBatchWrite();
-            throw e;
-        } catch (BlockStoreException e) {
+        } catch (VerificationException | BlockStoreException e) {
             scriptVerificationExecutor.shutdownNow();
             blockStore.abortDatabaseBatchWrite();
             throw e;
@@ -506,10 +482,7 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
                 blockStore.addUnspentTransactionOutput(out);
             for (UTXO out : txOutChanges.txOutsCreated)
                 blockStore.removeUnspentTransactionOutput(out);
-        } catch (PrunedException e) {
-            blockStore.abortDatabaseBatchWrite();
-            throw e;
-        } catch (BlockStoreException e) {
+        } catch (PrunedException | BlockStoreException e) {
             blockStore.abortDatabaseBatchWrite();
             throw e;
         }
@@ -531,5 +504,9 @@ public class FullPrunedBlockChain extends AbstractBlockChain {
     protected StoredBlock getStoredBlockInCurrentScope(Sha256Hash hash) throws BlockStoreException {
         checkState(lock.isHeldByCurrentThread());
         return blockStore.getOnceUndoableStoredBlock(hash);
+    }
+
+    private Coin getBlockInflation(int height) {
+        return ((BitcoinNetworkParams) params).getBlockInflation(height);
     }
 }

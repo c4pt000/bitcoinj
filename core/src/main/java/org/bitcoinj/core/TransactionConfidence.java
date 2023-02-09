@@ -17,18 +17,25 @@
 
 package org.bitcoinj.core;
 
-import com.google.common.collect.*;
-import com.google.common.util.concurrent.*;
-
-import org.bitcoinj.utils.*;
+import com.google.common.collect.Iterators;
+import org.bitcoinj.base.Sha256Hash;
+import org.bitcoinj.utils.ListenableCompletableFuture;
+import org.bitcoinj.utils.ListenerRegistration;
+import org.bitcoinj.utils.Threading;
 import org.bitcoinj.wallet.CoinSelector;
 import org.bitcoinj.wallet.Wallet;
 
-import javax.annotation.*;
-import java.util.*;
-import java.util.concurrent.*;
+import javax.annotation.Nullable;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executor;
 
-import static com.google.common.base.Preconditions.*;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 // TODO: Modify the getDepthInBlocks method to require the chain height to be specified, in preparation for ceasing to touch every tx on every block.
 
@@ -56,7 +63,7 @@ import static com.google.common.base.Preconditions.*;
  * <p>Alternatively, you may know that the transaction is "dead", that is, one or more of its inputs have
  * been double spent and will never confirm unless there is another re-org.</p>
  *
- * <p>TransactionConfidence is updated via the {@link TransactionConfidence#incrementDepthInBlocks(int height)}
+ * <p>TransactionConfidence is updated via the {@link TransactionConfidence#incrementDepthInBlocks()}
  * method to ensure the block depth is up to date.</p>
  * To make a copy that won't be changed, use {@link TransactionConfidence#duplicate()}.
  */
@@ -120,7 +127,8 @@ public class TransactionConfidence {
          */
         UNKNOWN(0);
         
-        private int value;
+        private final int value;
+
         ConfidenceType(int value) {
             this.value = value;
         }
@@ -317,8 +325,9 @@ public class TransactionConfidence {
      * Returns a snapshot of {@link PeerAddress}es that announced the transaction.
      */
     public Set<PeerAddress> getBroadcastBy() {
-        ListIterator<PeerAddress> iterator = broadcastBy.listIterator();
-        return Sets.newHashSet(iterator);
+        Set<PeerAddress> broadcastBySet = new HashSet<>();
+        Iterators.addAll(broadcastBySet, broadcastBy.listIterator());
+        return broadcastBySet;
     }
 
     /** Returns true if the given address has been seen via markBroadcastBy() */
@@ -375,11 +384,8 @@ public class TransactionConfidence {
      *
      * @return the new depth
      */
-    public synchronized int incrementDepthInBlocks(int height) {
-        if (getAppearedAtChainHeight() != -1)
-            this.depth = height - getAppearedAtChainHeight() + 1;
-
-        return this.depth;
+    public synchronized int incrementDepthInBlocks() {
+        return ++this.depth;
     }
 
     /**
@@ -460,12 +466,7 @@ public class TransactionConfidence {
      */
     public void queueListeners(final Listener.ChangeReason reason) {
         for (final ListenerRegistration<Listener> registration : listeners) {
-            registration.executor.execute(new Runnable() {
-                @Override
-                public void run() {
-                    registration.listener.onConfidenceChanged(TransactionConfidence.this, reason);
-                }
-            });
+            registration.executor.execute(() -> registration.listener.onConfidenceChanged(TransactionConfidence.this, reason));
         }
     }
 
@@ -494,23 +495,23 @@ public class TransactionConfidence {
      * depth to one will wait until it appears in a block on the best chain, and zero will wait until it has been seen
      * on the network.
      */
-    public synchronized ListenableFuture<TransactionConfidence> getDepthFuture(final int depth, Executor executor) {
-        final SettableFuture<TransactionConfidence> result = SettableFuture.create();
+    public synchronized ListenableCompletableFuture<TransactionConfidence> getDepthFuture(final int depth, Executor executor) {
+        final ListenableCompletableFuture<TransactionConfidence> result = new ListenableCompletableFuture<>();
         if (getDepthInBlocks() >= depth) {
-            result.set(this);
+            result.complete(this);
         }
         addEventListener(executor, new Listener() {
             @Override public void onConfidenceChanged(TransactionConfidence confidence, ChangeReason reason) {
                 if (getDepthInBlocks() >= depth) {
                     removeEventListener(this);
-                    result.set(confidence);
+                    result.complete(confidence);
                 }
             }
         });
         return result;
     }
 
-    public synchronized ListenableFuture<TransactionConfidence> getDepthFuture(final int depth) {
+    public synchronized ListenableCompletableFuture<TransactionConfidence> getDepthFuture(final int depth) {
         return getDepthFuture(depth, Threading.USER_THREAD);
     }
 

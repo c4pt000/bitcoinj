@@ -16,12 +16,16 @@
 
 package org.bitcoinj.core;
 
-import org.bitcoinj.utils.*;
+import org.bitcoinj.base.Sha256Hash;
+import org.bitcoinj.utils.Threading;
 
-import javax.annotation.*;
-import java.lang.ref.*;
-import java.util.*;
-import java.util.concurrent.locks.*;
+import javax.annotation.Nullable;
+import java.lang.ref.Reference;
+import java.lang.ref.ReferenceQueue;
+import java.lang.ref.WeakReference;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -37,7 +41,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
  * all transactions not currently included in the best chain - it's simply a cache.</p>
  */
 public class TxConfidenceTable {
-    protected ReentrantLock lock = Threading.lock("txconfidencetable");
+    protected final ReentrantLock lock = Threading.lock(TxConfidenceTable.class);
 
     private static class WeakConfidenceReference extends WeakReference<TransactionConfidence> {
         public Sha256Hash hash;

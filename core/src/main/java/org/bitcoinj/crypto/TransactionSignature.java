@@ -16,12 +16,13 @@
 
 package org.bitcoinj.crypto;
 
-import org.bitcoinj.core.SignatureDecodeException;
-import org.bitcoinj.core.ECKey;
-import org.bitcoinj.core.Transaction;
-import org.bitcoinj.core.VerificationException;
-import org.bitcoinj.core.Transaction.SigHash;
 import com.google.common.base.Preconditions;
+import org.bitcoinj.core.ECKey;
+import org.bitcoinj.core.SignatureDecodeException;
+import org.bitcoinj.core.Transaction;
+import org.bitcoinj.core.Transaction.SigHash;
+import org.bitcoinj.core.VerificationException;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
@@ -90,6 +91,11 @@ public class TransactionSignature extends ECKey.ECDSASignature {
         // Where R and S are not negative (their first byte has its highest bit not set), and not
         // excessively padded (do not start with a 0 byte, unless an otherwise negative number follows,
         // in which case a single 0 byte is necessary and even required).
+
+        // Empty signatures, while not strictly DER encoded, are allowed.
+        if (signature.length == 0)
+            return true;
+
         if (signature.length < 9 || signature.length > 73)
             return false;
 
@@ -171,7 +177,7 @@ public class TransactionSignature extends ECKey.ECDSASignature {
             boolean requireCanonicalSValue) throws SignatureDecodeException, VerificationException {
         // Bitcoin encoding is DER signature + sighash byte.
         if (requireCanonicalEncoding && !isEncodingCanonical(bytes))
-            throw new VerificationException("Signature encoding is not canonical.");
+            throw new VerificationException.NoncanonicalSignature();
         ECKey.ECDSASignature sig = ECKey.ECDSASignature.decodeFromDER(bytes);
         if (requireCanonicalSValue && !sig.isCanonical())
             throw new VerificationException("S-value is not canonical.");

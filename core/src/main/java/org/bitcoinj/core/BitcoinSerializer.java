@@ -17,6 +17,8 @@
 
 package org.bitcoinj.core;
 
+import org.bitcoinj.base.Sha256Hash;
+import org.bitcoinj.base.utils.ByteUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +31,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-import static org.bitcoinj.core.Utils.*;
+import static org.bitcoinj.base.utils.ByteUtils.HEX;
+import static org.bitcoinj.base.utils.ByteUtils.readUint32;
+import static org.bitcoinj.base.utils.ByteUtils.uint32ToByteArrayBE;
 
 /**
  * <p>Methods to serialize and de-serialize messages to the Bitcoin network format as defined in
@@ -74,8 +78,6 @@ public class BitcoinSerializer extends MessageSerializer {
         names.put(NotFoundMessage.class, "notfound");
         names.put(MemoryPoolMessage.class, "mempool");
         names.put(RejectMessage.class, "reject");
-        names.put(GetUTXOsMessage.class, "getutxos");
-        names.put(UTXOsMessage.class, "utxos");
         names.put(SendHeadersMessage.class, "sendheaders");
         names.put(FeeFilterMessage.class, "feefilter");
     }
@@ -128,7 +130,7 @@ public class BitcoinSerializer extends MessageSerializer {
             header[4 + i] = (byte) (name.codePointAt(i) & 0xFF);
         }
 
-        Utils.uint32ToByteArrayLE(message.length, header, 4 + COMMAND_LEN);
+        ByteUtils.uint32ToByteArrayLE(message.length, header, 4 + COMMAND_LEN);
 
         byte[] hash = Sha256Hash.hashTwice(message);
         System.arraycopy(hash, 0, header, 4 + COMMAND_LEN + 4, 4);
@@ -210,13 +212,13 @@ public class BitcoinSerializer extends MessageSerializer {
         }
 
         try {
-            return makeMessage(header.command, header.size, payloadBytes, hash, header.checksum);
+            return makeMessage(header.command, header.size, payloadBytes, hash);
         } catch (Exception e) {
             throw new ProtocolException("Error deserializing message " + HEX.encode(payloadBytes) + "\n", e);
         }
     }
 
-    private Message makeMessage(String command, int length, byte[] payloadBytes, byte[] hash, byte[] checksum) throws ProtocolException {
+    private Message makeMessage(String command, int length, byte[] payloadBytes, byte[] hash) throws ProtocolException {
         // We use an if ladder rather than reflection because reflection is very slow on Android.
         if (command.equals("version")) {
             return new VersionMessage(params, payloadBytes);
@@ -256,10 +258,6 @@ public class BitcoinSerializer extends MessageSerializer {
             return new MemoryPoolMessage();
         } else if (command.equals("reject")) {
             return new RejectMessage(params, payloadBytes);
-        } else if (command.equals("utxos")) {
-            return new UTXOsMessage(params, payloadBytes);
-        } else if (command.equals("getutxos")) {
-            return new GetUTXOsMessage(params, payloadBytes);
         } else if (command.equals("sendheaders")) {
             return new SendHeadersMessage(params, payloadBytes);
         } else if (command.equals("feefilter")) {
@@ -404,7 +402,6 @@ public class BitcoinSerializer extends MessageSerializer {
             checksum = new byte[4];
             // Note that the size read above includes the checksum bytes.
             System.arraycopy(header, cursor, checksum, 0, 4);
-            cursor += 4;
         }
     }
 

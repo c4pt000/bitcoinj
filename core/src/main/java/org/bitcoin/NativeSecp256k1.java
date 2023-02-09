@@ -17,14 +17,17 @@
 
 package org.bitcoin;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import com.google.common.base.Preconditions;
 
 import java.math.BigInteger;
-import com.google.common.base.Preconditions;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import static org.bitcoin.NativeSecp256k1Util.*;
+
+import static org.bitcoin.NativeSecp256k1Util.AssertFailException;
+import static org.bitcoin.NativeSecp256k1Util.assertEquals;
 
 /**
  * <p>This class holds native methods to handle ECDSA verification.</p>
@@ -36,7 +39,9 @@ import static org.bitcoin.NativeSecp256k1Util.*;
  * and `make` then copy `.libs/libsecp256k1.so` to your system library path
  * or point the JVM to the folder containing it with -Djava.library.path
  * </p>
+ * @deprecated See https://github.com/bitcoinj/bitcoinj/issues/2267
  */
+@Deprecated
 public class NativeSecp256k1 {
 
     private static final ReentrantReadWriteLock rwl = new ReentrantReadWriteLock();
@@ -51,6 +56,8 @@ public class NativeSecp256k1 {
      * @param data The data which was signed, must be exactly 32 bytes
      * @param signature The signature
      * @param pub The public key which did the signing
+     * @return true if correct signature
+     * @throws AssertFailException never thrown?
      */
     public static boolean verify(byte[] data, byte[] signature, byte[] pub) throws AssertFailException {
         Preconditions.checkArgument(data.length == 32 && signature.length <= 520 && pub.length <= 520);
@@ -61,7 +68,7 @@ public class NativeSecp256k1 {
             byteBuff.order(ByteOrder.nativeOrder());
             nativeECDSABuffer.set(byteBuff);
         }
-        byteBuff.rewind();
+        ((Buffer) byteBuff).rewind();
         byteBuff.put(data);
         byteBuff.put(signature);
         byteBuff.put(pub);
@@ -80,6 +87,7 @@ public class NativeSecp256k1 {
      * @param data Message hash, 32 bytes
      * @param sec Secret key, 32 bytes
      * @return sig byte array of signature
+     * @throws AssertFailException on bad signature length
      */
     public static byte[] sign(byte[] data, byte[] sec) throws AssertFailException {
         Preconditions.checkArgument(data.length == 32 && sec.length <= 32);
@@ -90,7 +98,7 @@ public class NativeSecp256k1 {
             byteBuff.order(ByteOrder.nativeOrder());
             nativeECDSABuffer.set(byteBuff);
         }
-        byteBuff.rewind();
+        ((Buffer) byteBuff).rewind();
         byteBuff.put(data);
         byteBuff.put(sec);
 
@@ -116,6 +124,7 @@ public class NativeSecp256k1 {
      * libsecp256k1 Seckey Verify - returns 1 if valid, 0 if invalid
      *
      * @param seckey ECDSA Secret key, 32 bytes
+     * @return true if valid, false if invalid
      */
     public static boolean secKeyVerify(byte[] seckey) {
         Preconditions.checkArgument(seckey.length == 32);
@@ -126,7 +135,7 @@ public class NativeSecp256k1 {
             byteBuff.order(ByteOrder.nativeOrder());
             nativeECDSABuffer.set(byteBuff);
         }
-        byteBuff.rewind();
+        ((Buffer) byteBuff).rewind();
         byteBuff.put(seckey);
 
         r.lock();
@@ -142,6 +151,7 @@ public class NativeSecp256k1 {
      *
      * @param seckey ECDSA Secret key, 32 bytes
      * @return pubkey ECDSA Public key, 33 or 65 bytes
+     * @throws AssertFailException if bad pubkey length
      */
     // TODO add a 'compressed' arg
     public static byte[] computePubkey(byte[] seckey) throws AssertFailException {
@@ -153,7 +163,7 @@ public class NativeSecp256k1 {
             byteBuff.order(ByteOrder.nativeOrder());
             nativeECDSABuffer.set(byteBuff);
         }
-        byteBuff.rewind();
+        ((Buffer) byteBuff).rewind();
         byteBuff.put(seckey);
 
         byte[][] retByteArray;
@@ -187,6 +197,11 @@ public class NativeSecp256k1 {
         }
     }
 
+    /**
+     * Clone context
+     *
+     * @return context reference
+     */
     public static long cloneContext() {
         r.lock();
         try {
@@ -201,6 +216,8 @@ public class NativeSecp256k1 {
      *
      * @param tweak some bytes to tweak with
      * @param privkey 32-byte seckey
+     * @return The tweaked private key
+     * @throws AssertFailException assertion failure
      */
     public static byte[] privKeyTweakMul(byte[] privkey, byte[] tweak) throws AssertFailException {
         Preconditions.checkArgument(privkey.length == 32);
@@ -211,7 +228,7 @@ public class NativeSecp256k1 {
             byteBuff.order(ByteOrder.nativeOrder());
             nativeECDSABuffer.set(byteBuff);
         }
-        byteBuff.rewind();
+        ((Buffer) byteBuff).rewind();
         byteBuff.put(privkey);
         byteBuff.put(tweak);
 
@@ -240,6 +257,8 @@ public class NativeSecp256k1 {
      *
      * @param tweak some bytes to tweak with
      * @param privkey 32-byte seckey
+     * @return The tweaked private key
+     * @throws AssertFailException assertion failure
      */
     public static byte[] privKeyTweakAdd(byte[] privkey, byte[] tweak) throws AssertFailException {
         Preconditions.checkArgument(privkey.length == 32);
@@ -250,7 +269,7 @@ public class NativeSecp256k1 {
             byteBuff.order(ByteOrder.nativeOrder());
             nativeECDSABuffer.set(byteBuff);
         }
-        byteBuff.rewind();
+        ((Buffer) byteBuff).rewind();
         byteBuff.put(privkey);
         byteBuff.put(tweak);
 
@@ -279,6 +298,8 @@ public class NativeSecp256k1 {
      *
      * @param tweak some bytes to tweak with
      * @param pubkey 32-byte seckey
+     * @return The tweaked private key
+     * @throws AssertFailException assertion failure
      */
     public static byte[] pubKeyTweakAdd(byte[] pubkey, byte[] tweak) throws AssertFailException {
         Preconditions.checkArgument(pubkey.length == 33 || pubkey.length == 65);
@@ -289,7 +310,7 @@ public class NativeSecp256k1 {
             byteBuff.order(ByteOrder.nativeOrder());
             nativeECDSABuffer.set(byteBuff);
         }
-        byteBuff.rewind();
+        ((Buffer) byteBuff).rewind();
         byteBuff.put(pubkey);
         byteBuff.put(tweak);
 
@@ -318,6 +339,8 @@ public class NativeSecp256k1 {
      *
      * @param tweak some bytes to tweak with
      * @param pubkey 32-byte seckey
+     * @return The tweaked private key
+     * @throws AssertFailException assertion failure
      */
     public static byte[] pubKeyTweakMul(byte[] pubkey, byte[] tweak) throws AssertFailException {
         Preconditions.checkArgument(pubkey.length == 33 || pubkey.length == 65);
@@ -328,7 +351,7 @@ public class NativeSecp256k1 {
             byteBuff.order(ByteOrder.nativeOrder());
             nativeECDSABuffer.set(byteBuff);
         }
-        byteBuff.rewind();
+        ((Buffer) byteBuff).rewind();
         byteBuff.put(pubkey);
         byteBuff.put(tweak);
 
@@ -355,8 +378,10 @@ public class NativeSecp256k1 {
     /**
      * libsecp256k1 create ECDH secret - constant time ECDH calculation
      *
-     * @param seckey byte array of secret key used in exponentiaion
-     * @param pubkey byte array of public key used in exponentiaion
+     * @param seckey byte array of secret key used in exponentiation
+     * @param pubkey byte array of public key used in exponentiation
+     * @return the secret
+     * @throws AssertFailException assertion failure
      */
     public static byte[] createECDHSecret(byte[] seckey, byte[] pubkey) throws AssertFailException {
         Preconditions.checkArgument(seckey.length <= 32 && pubkey.length <= 65);
@@ -367,7 +392,7 @@ public class NativeSecp256k1 {
             byteBuff.order(ByteOrder.nativeOrder());
             nativeECDSABuffer.set(byteBuff);
         }
-        byteBuff.rewind();
+        ((Buffer) byteBuff).rewind();
         byteBuff.put(seckey);
         byteBuff.put(pubkey);
 
@@ -392,8 +417,10 @@ public class NativeSecp256k1 {
      * libsecp256k1 randomize - updates the context randomization
      *
      * @param seed 32-byte random seed
+     * @return true if successful, false otherwise
+     * @throws AssertFailException never thrown?
      */
-    public static synchronized boolean randomize(byte[] seed) throws AssertFailException {
+    public static synchronized boolean randomize(byte[] seed) throws AssertFailException  {
         Preconditions.checkArgument(seed.length == 32 || seed == null);
 
         ByteBuffer byteBuff = nativeECDSABuffer.get();
@@ -402,7 +429,7 @@ public class NativeSecp256k1 {
             byteBuff.order(ByteOrder.nativeOrder());
             nativeECDSABuffer.set(byteBuff);
         }
-        byteBuff.rewind();
+        ((Buffer) byteBuff).rewind();
         byteBuff.put(seed);
 
         w.lock();
@@ -413,6 +440,12 @@ public class NativeSecp256k1 {
         }
     }
 
+    /**
+     * @param data data to sign
+     * @param sec secret key
+     * @return Signature or byte[0]
+     * @throws AssertFailException assertion failure
+     */
     public static byte[] schnorrSign(byte[] data, byte[] sec) throws AssertFailException {
         Preconditions.checkArgument(data.length == 32 && sec.length <= 32);
 
@@ -422,7 +455,7 @@ public class NativeSecp256k1 {
             byteBuff.order(ByteOrder.nativeOrder());
             nativeECDSABuffer.set(byteBuff);
         }
-        byteBuff.rewind();
+        ((Buffer) byteBuff).rewind();
         byteBuff.put(data);
         byteBuff.put(sec);
 

@@ -21,7 +21,11 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.text.MessageFormat;
 import java.util.Date;
-import java.util.logging.*;
+import java.util.logging.Formatter;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 
 /**
  * A Java logging formatter that writes more compact output than the default.
@@ -32,11 +36,10 @@ public class BriefLogFormatter extends Formatter {
     // OpenJDK made a questionable, backwards incompatible change to the Logger implementation. It internally uses
     // weak references now which means simply fetching the logger and changing its configuration won't work. We must
     // keep a reference to our custom logger around.
-    private static Logger logger;
+    private static final Logger logger = Logger.getLogger("");
 
     /** Configures JDK logging to use this class for everything. */
     public static void init() {
-        logger = Logger.getLogger("");
         final Handler[] handlers = logger.getHandlers();
         // In regular Java there is always a handler. Avian doesn't install one however.
         if (handlers.length > 0)

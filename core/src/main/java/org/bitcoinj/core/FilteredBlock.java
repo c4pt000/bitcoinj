@@ -17,10 +17,16 @@
 
 package org.bitcoinj.core;
 
-import com.google.common.base.Objects;
+import org.bitcoinj.base.Sha256Hash;
+
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 /**
  * <p>A FilteredBlock is used to relay a block with its transactions filtered using a {@link BloomFilter}. It consists
@@ -50,7 +56,7 @@ public class FilteredBlock extends Message {
 
     @Override
     public void bitcoinSerializeToStream(OutputStream stream) throws IOException {
-        if (header.transactions == null)
+        if (header.getTransactions() == null)
             header.bitcoinSerializeToStream(stream);
         else
             header.cloneAsHeader().bitcoinSerializeToStream(stream);
@@ -136,7 +142,7 @@ public class FilteredBlock extends Message {
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(associatedTransactions, header, merkleTree);
+        return Objects.hash(associatedTransactions, header, merkleTree);
     }
 
     @Override

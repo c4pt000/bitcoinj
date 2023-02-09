@@ -17,22 +17,42 @@
 
 package org.bitcoinj.core;
 
-import com.google.common.base.*;
-import com.google.common.collect.*;
-import com.google.common.util.concurrent.*;
-import org.bitcoinj.core.listeners.*;
+import com.google.common.base.Preconditions;
+import org.bitcoinj.base.Sha256Hash;
+import org.bitcoinj.core.listeners.NewBestBlockListener;
+import org.bitcoinj.core.listeners.ReorganizeListener;
+import org.bitcoinj.core.listeners.TransactionReceivedInBlockListener;
 import org.bitcoinj.script.ScriptException;
-import org.bitcoinj.store.*;
-import org.bitcoinj.utils.*;
+import org.bitcoinj.store.BlockStore;
+import org.bitcoinj.store.BlockStoreException;
+import org.bitcoinj.store.SPVBlockStore;
+import org.bitcoinj.utils.ListenableCompletableFuture;
+import org.bitcoinj.utils.ListenerRegistration;
+import org.bitcoinj.utils.Threading;
+import org.bitcoinj.utils.VersionTally;
 import org.bitcoinj.wallet.Wallet;
-import org.slf4j.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import javax.annotation.*;
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.locks.*;
+import javax.annotation.Nullable;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
+import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executor;
+import java.util.concurrent.locks.ReentrantLock;
 
-import static com.google.common.base.Preconditions.*;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * <p>An AbstractBlockChain holds a series of {@link Block} objects, links them together, and knows how to verify that
@@ -53,7 +73,7 @@ import static com.google.common.base.Preconditions.*;
  * <p>There are two subclasses of AbstractBlockChain that are useful: {@link BlockChain}, which is the simplest
  * class and implements <i>simplified payment verification</i>. This is a lightweight and efficient mode that does
  * not verify the contents of blocks, just their headers. A {@link FullPrunedBlockChain} paired with a
- * {@link H2FullPrunedBlockStore} implements full verification, which is equivalent to
+ * {@link org.bitcoinj.store.MemoryFullPrunedBlockStore} implements full verification, which is equivalent to
  * Bitcoin Core. To learn more about the alternative security models, please consult the articles on the
  * website.</p>
  *
@@ -79,7 +99,8 @@ import static com.google.common.base.Preconditions.*;
  */
 public abstract class AbstractBlockChain {
     private static final Logger log = LoggerFactory.getLogger(AbstractBlockChain.class);
-    protected final ReentrantLock lock = Threading.lock("blockchain");
+    /** synchronization lock */
+    protected final ReentrantLock lock = Threading.lock(AbstractBlockChain.class);
 
     /** Keeps a map of block hashes to StoredBlocks. */
     private final BlockStore blockStore;
@@ -101,20 +122,21 @@ public abstract class AbstractBlockChain {
     // locked most of the time.
     private final Object chainHeadLock = new Object();
 
+    /** network parameters for this chain */
     protected final NetworkParameters params;
     private final CopyOnWriteArrayList<ListenerRegistration<NewBestBlockListener>> newBestBlockListeners;
     private final CopyOnWriteArrayList<ListenerRegistration<ReorganizeListener>> reorganizeListeners;
     private final CopyOnWriteArrayList<ListenerRegistration<TransactionReceivedInBlockListener>> transactionReceivedListeners;
 
     // Holds a block header and, optionally, a list of tx hashes or block's transactions
-    class OrphanBlock {
+    static class OrphanBlock {
         final Block block;
         final List<Sha256Hash> filteredTxHashes;
         final Map<Sha256Hash, Transaction> filteredTxn;
         OrphanBlock(Block block, @Nullable List<Sha256Hash> filteredTxHashes, @Nullable Map<Sha256Hash, Transaction> filteredTxn) {
             final boolean filtered = filteredTxHashes != null && filteredTxn != null;
-            Preconditions.checkArgument((block.transactions == null && filtered)
-                                        || (block.transactions != null && !filtered));
+            Preconditions.checkArgument((block.getTransactions() == null && filtered)
+                                        || (block.getTransactions() != null && !filtered));
             this.block = block;
             this.filteredTxHashes = filteredTxHashes;
             this.filteredTxn = filteredTxn;
@@ -135,21 +157,19 @@ public abstract class AbstractBlockChain {
 
     private final VersionTally versionTally;
 
-    /** See {@link #AbstractBlockChain(Context, List, BlockStore)} */
-    public AbstractBlockChain(NetworkParameters params, List<? extends Wallet> transactionReceivedListeners,
-                              BlockStore blockStore) throws BlockStoreException {
-        this(Context.getOrCreate(params), transactionReceivedListeners, blockStore);
-    }
-
     /**
-     * Constructs a BlockChain connected to the given list of listeners (eg, wallets) and a store.
+     * Constructs a BlockChain connected to the given list of listeners (wallets) and a store.
+     * @param params network parameters for this chain
+     * @param wallets list of listeners (wallets)
+     * @param blockStore where to store blocks
+     * @throws BlockStoreException if a failure occurs while storing a block
      */
-    public AbstractBlockChain(Context context, List<? extends Wallet> wallets,
+    public AbstractBlockChain(NetworkParameters params, List<? extends Wallet> wallets,
                               BlockStore blockStore) throws BlockStoreException {
         this.blockStore = blockStore;
         chainHead = blockStore.getChainHead();
         log.info("chain head is at height {}:\n{}", chainHead.getHeight(), chainHead.getHeader());
-        this.params = context.getParams();
+        this.params = params;
 
         this.newBestBlockListeners = new CopyOnWriteArrayList<>();
         this.reorganizeListeners = new CopyOnWriteArrayList<>();
@@ -158,7 +178,7 @@ public abstract class AbstractBlockChain {
         for (ReorganizeListener l : wallets) addReorganizeListener(Threading.SAME_THREAD, l);
         for (TransactionReceivedInBlockListener l : wallets) addTransactionReceivedListener(Threading.SAME_THREAD, l);
 
-        this.versionTally = new VersionTally(context.getParams());
+        this.versionTally = new VersionTally(params);
         this.versionTally.initialize(blockStore, chainHead);
     }
 
@@ -167,6 +187,7 @@ public abstract class AbstractBlockChain {
      * was not part of this BlockChain. This method is useful if the wallet has just been created, and its keys
      * have never been in use, or if the wallet has been loaded along with the BlockChain. Note that adding multiple
      * wallets is not well tested!
+     * @param wallet wallet to add
      */
     public final void addWallet(Wallet wallet) {
         addNewBestBlockListener(Threading.SAME_THREAD, wallet);
@@ -192,7 +213,10 @@ public abstract class AbstractBlockChain {
         }
     }
 
-    /** Removes a wallet from the chain. */
+    /**
+     * Remove a wallet from the chain.
+     * @param wallet wallet to remove
+     */
     public void removeWallet(Wallet wallet) {
         removeNewBestBlockListener(wallet);
         removeReorganizeListener(wallet);
@@ -201,6 +225,7 @@ public abstract class AbstractBlockChain {
 
     /**
      * Adds a {@link NewBestBlockListener} listener to the chain.
+     * @param listener listener to add
      */
     public void addNewBestBlockListener(NewBestBlockListener listener) {
         addNewBestBlockListener(Threading.USER_THREAD, listener);
@@ -208,6 +233,8 @@ public abstract class AbstractBlockChain {
 
     /**
      * Adds a {@link NewBestBlockListener} listener to the chain.
+     * @param executor executor to listen on
+     * @param listener listener to add
      */
     public final void addNewBestBlockListener(Executor executor, NewBestBlockListener listener) {
         newBestBlockListeners.add(new ListenerRegistration<>(listener, executor));
@@ -215,6 +242,7 @@ public abstract class AbstractBlockChain {
 
     /**
      * Adds a generic {@link ReorganizeListener} listener to the chain.
+     * @param listener listener to add
      */
     public void addReorganizeListener(ReorganizeListener listener) {
         addReorganizeListener(Threading.USER_THREAD, listener);
@@ -222,6 +250,8 @@ public abstract class AbstractBlockChain {
 
     /**
      * Adds a generic {@link ReorganizeListener} listener to the chain.
+     * @param executor executor to listen on
+     * @param listener listener to add
      */
     public final void addReorganizeListener(Executor executor, ReorganizeListener listener) {
         reorganizeListeners.add(new ListenerRegistration<>(listener, executor));
@@ -229,6 +259,7 @@ public abstract class AbstractBlockChain {
 
     /**
      * Adds a generic {@link TransactionReceivedInBlockListener} listener to the chain.
+     * @param listener listener to add
      */
     public void addTransactionReceivedListener(TransactionReceivedInBlockListener listener) {
         addTransactionReceivedListener(Threading.USER_THREAD, listener);
@@ -236,6 +267,8 @@ public abstract class AbstractBlockChain {
 
     /**
      * Adds a generic {@link TransactionReceivedInBlockListener} listener to the chain.
+     * @param executor executor to listen on
+     * @param listener listener to add
      */
     public final void addTransactionReceivedListener(Executor executor, TransactionReceivedInBlockListener listener) {
         transactionReceivedListeners.add(new ListenerRegistration<>(listener, executor));
@@ -243,6 +276,7 @@ public abstract class AbstractBlockChain {
 
     /**
      * Removes the given {@link NewBestBlockListener} from the chain.
+     * @param listener listener to remove
      */
     public void removeNewBestBlockListener(NewBestBlockListener listener) {
         ListenerRegistration.removeFromList(listener, newBestBlockListeners);
@@ -250,6 +284,7 @@ public abstract class AbstractBlockChain {
 
     /**
      * Removes the given {@link ReorganizeListener} from the chain.
+     * @param listener listener to remove
      */
     public void removeReorganizeListener(ReorganizeListener listener) {
         ListenerRegistration.removeFromList(listener, reorganizeListeners);
@@ -257,6 +292,7 @@ public abstract class AbstractBlockChain {
 
     /**
      * Removes the given {@link TransactionReceivedInBlockListener} from the chain.
+     * @param listener listener to remove
      */
     public void removeTransactionReceivedListener(TransactionReceivedInBlockListener listener) {
         ListenerRegistration.removeFromList(listener, transactionReceivedListeners);
@@ -264,6 +300,7 @@ public abstract class AbstractBlockChain {
     
     /**
      * Returns the {@link BlockStore} the chain was constructed with. You can use this to iterate over the chain.
+     * @return the {@code BlockStore} the chain was constructed with
      */
     public BlockStore getBlockStore() {
         return blockStore;
@@ -275,6 +312,8 @@ public abstract class AbstractBlockChain {
      * @param storedPrev The {@link StoredBlock} which immediately precedes block.
      * @param block The {@link Block} to add/update.
      * @return the newly created {@link StoredBlock}
+     * @throws BlockStoreException if a failure occurs while storing a block
+     * @throws VerificationException if the block is invalid
      */
     protected abstract StoredBlock addToBlockStore(StoredBlock storedPrev, Block block)
             throws BlockStoreException, VerificationException;
@@ -287,6 +326,8 @@ public abstract class AbstractBlockChain {
      * @param txOutputChanges The total sum of all changes made by this block to the set of open transaction outputs
      *                        (from a call to connectTransactions), if in fully verifying mode (null otherwise).
      * @return the newly created {@link StoredBlock}
+     * @throws BlockStoreException if a failure occurs while storing a block
+     * @throws VerificationException if the block is invalid
      */
     protected abstract StoredBlock addToBlockStore(StoredBlock storedPrev, Block header,
                                                    @Nullable TransactionOutputChanges txOutputChanges)
@@ -294,9 +335,9 @@ public abstract class AbstractBlockChain {
 
     /**
      * Rollback the block store to a given height. This is currently only supported by {@link BlockChain} instances.
-     * 
-     * @throws BlockStoreException
-     *             if the operation fails or is unsupported.
+     *
+     * @param height height to roll back to
+     * @throws BlockStoreException if the operation fails or is unsupported.
      */
     protected abstract void rollbackBlockStore(int height) throws BlockStoreException;
 
@@ -304,6 +345,8 @@ public abstract class AbstractBlockChain {
      * Called before setting chain head in memory.
      * Should write the new head to block store and then commit any database transactions
      * that were started by disconnectTransactions/connectTransactions.
+     * @param chainHead chain head to set
+     * @throws BlockStoreException if a failure occurs while storing a block
      */
     protected abstract void doSetChainHead(StoredBlock chainHead) throws BlockStoreException;
     
@@ -312,12 +355,16 @@ public abstract class AbstractBlockChain {
      * but will not be calling preSetChainHead as a block failed verification.
      * Can be used to abort database transactions that were started by
      * disconnectTransactions/connectTransactions.
+     * @throws BlockStoreException if a failure occurs while storing a block
      */
     protected abstract void notSettingChainHead() throws BlockStoreException;
     
     /**
      * For a standard BlockChain, this should return blockStore.get(hash),
      * for a FullPrunedBlockChain blockStore.getOnceUndoableStoredBlock(hash)
+     * @param hash hash of block to fetch
+     * @return block with matching hash
+     * @throws BlockStoreException if a failure occurs while storing a block
      */
     protected abstract StoredBlock getStoredBlockInCurrentScope(Sha256Hash hash) throws BlockStoreException;
 
@@ -326,6 +373,10 @@ public abstract class AbstractBlockChain {
      * exception is thrown. If the block is OK but cannot be connected to the chain at this time, returns false.
      * If the block can be connected to the chain, returns true.
      * Accessing block's transactions in another thread while this method runs may result in undefined behavior.
+     * @param block block to add
+     * @return true if block can be connected, false if block is valid but can't be connected
+     * @throws VerificationException block is invalid or contains invalid transactions
+     * @throws PrunedException a reorg that is too-long for our stored block data has occurred
      */
     public boolean add(Block block) throws VerificationException, PrunedException {
         try {
@@ -348,6 +399,10 @@ public abstract class AbstractBlockChain {
      * Processes a received block and tries to add it to the chain. If there's something wrong with the block an
      * exception is thrown. If the block is OK but cannot be connected to the chain at this time, returns false.
      * If the block can be connected to the chain, returns true.
+     * @param block received block
+     * @return true if block can be connected, false if block is valid but can't be connected
+     * @throws VerificationException if invalid block
+     * @throws PrunedException a reorg that is too-long for our stored block data has occurred
      */
     public boolean add(FilteredBlock block) throws VerificationException, PrunedException {
         try {
@@ -376,6 +431,7 @@ public abstract class AbstractBlockChain {
     /**
      * Whether or not we are maintaining a set of unspent outputs and are verifying all transactions.
      * Also indicates that all calls to add() should provide a block containing transactions
+     * @return true if we are verifying all transactions
      */
     protected abstract boolean shouldVerifyTransactions();
     
@@ -384,9 +440,11 @@ public abstract class AbstractBlockChain {
      * If an error is encountered in a transaction, no changes should be made to the underlying BlockStore.
      * and a VerificationException should be thrown.
      * Only called if(shouldVerifyTransactions())
+     * @param height block height to attach at
+     * @param block block to connect
+     * @return The full set of all changes made to the set of open transaction outputs.
      * @throws VerificationException if an attempt was made to spend an already-spent output, or if a transaction incorrectly solved an output script.
      * @throws BlockStoreException if the block store had an underlying error.
-     * @return The full set of all changes made to the set of open transaction outputs.
      */
     protected abstract TransactionOutputChanges connectTransactions(int height, Block block) throws VerificationException, BlockStoreException;
 
@@ -394,6 +452,7 @@ public abstract class AbstractBlockChain {
      * Load newBlock from BlockStore and connect its transactions, returning changes to the set of unspent transactions.
      * If an error is encountered in a transaction, no changes should be made to the underlying BlockStore.
      * Only called if(shouldVerifyTransactions())
+     * @param newBlock block to load
      * @throws PrunedException if newBlock does not exist as a {@link StoredUndoableBlock} in the block store.
      * @throws VerificationException if an attempt was made to spend an already-spent output, or if a transaction incorrectly solved an output script.
      * @throws BlockStoreException if the block store had an underlying error or newBlock does not exist in the block store at all.
@@ -418,7 +477,7 @@ public abstract class AbstractBlockChain {
             }
 
             // If we want to verify transactions (ie we are running with full blocks), verify that block has transactions
-            if (shouldVerifyTransactions() && block.transactions == null)
+            if (shouldVerifyTransactions() && block.getTransactions() == null)
                 throw new VerificationException("Got a block header while running in full-block mode");
 
             // Check for already-seen block, but only for full pruned mode, where the DB is
@@ -461,18 +520,18 @@ public abstract class AbstractBlockChain {
                 checkState(tryConnecting, "bug in tryConnectingOrphans");
                 log.warn("Block does not connect: {} prev {}", block.getHashAsString(), block.getPrevBlockHash());
                 orphanBlocks.put(block.getHash(), new OrphanBlock(block, filteredTxHashList, filteredTxn));
+                if (tryConnecting)
+                    tryConnectingOrphans();
                 return false;
             } else {
                 checkState(lock.isHeldByCurrentThread());
                 // It connects to somewhere on the chain. Not necessarily the top of the best known chain.
                 params.checkDifficultyTransitions(storedPrev, block, blockStore);
                 connectBlock(block, storedPrev, shouldVerifyTransactions(), filteredTxHashList, filteredTxn);
+                if (tryConnecting)
+                    tryConnectingOrphans();
+                return true;
             }
-
-            if (tryConnecting)
-                tryConnectingOrphans();
-
-            return true;
         } finally {
             lock.unlock();
         }
@@ -482,6 +541,7 @@ public abstract class AbstractBlockChain {
      * Returns the hashes of the currently stored orphan blocks and then deletes them from this objects storage.
      * Used by Peer when a filter exhaustion event has occurred and thus any orphan blocks that have been downloaded
      * might be inaccurate/incomplete.
+     * @return hashes of deleted blocks
      */
     public Set<Sha256Hash> drainOrphanBlocks() {
         lock.lock();
@@ -506,8 +566,7 @@ public abstract class AbstractBlockChain {
         if (!params.passesCheckpoint(storedPrev.getHeight() + 1, block.getHash()))
             throw new VerificationException("Block failed checkpoint lockin at " + (storedPrev.getHeight() + 1));
         if (shouldVerifyTransactions()) {
-            checkNotNull(block.transactions);
-            for (Transaction tx : block.transactions)
+            for (Transaction tx : block.getTransactions())
                 if (!tx.isFinal(storedPrev.getHeight() + 1, block.getTimeSeconds()))
                    throw new VerificationException("Block contains non-final transaction");
         }
@@ -531,7 +590,6 @@ public abstract class AbstractBlockChain {
                 final Integer count = versionTally.getCountAtOrAbove(block.getVersion() + 1);
                 if (count != null
                     && count >= params.getMajorityRejectBlockOutdated()) {
-                    log.error("Block with hash {} has outdated version: version # = {}" , block.getHashAsString(), block.getVersion());
                     throw new VerificationException.BlockVersionOutOfDate(block.getVersion());
                 }
             }
@@ -541,7 +599,7 @@ public abstract class AbstractBlockChain {
             if (shouldVerifyTransactions())
                 txOutChanges = connectTransactions(storedPrev.getHeight() + 1, block);
             StoredBlock newStoredBlock = addToBlockStore(storedPrev,
-                    block.transactions == null ? block : block.cloneAsHeader(), txOutChanges);
+                    block.getTransactions() == null ? block : block.cloneAsHeader(), txOutChanges);
             versionTally.add(block.getVersion());
             setChainHead(newStoredBlock);
             if (log.isDebugEnabled())
@@ -584,7 +642,7 @@ public abstract class AbstractBlockChain {
             // We may not have any transactions if we received only a header, which can happen during fast catchup.
             // If we do, send them to the wallet but state that they are on a side chain so it knows not to try and
             // spend them until they become activated.
-            if (block.transactions != null || filtered) {
+            if (block.getTransactions() != null || filtered) {
                 informListenersForNewBlock(block, NewBlockType.SIDE_CHAIN, filteredTxHashList, filteredTxn, newBlock);
             }
             
@@ -601,7 +659,7 @@ public abstract class AbstractBlockChain {
         // (in the case of the listener being a wallet). Wallets need to know how deep each transaction is so
         // coinbases aren't used before maturity.
         boolean first = true;
-        Set<Sha256Hash> falsePositives = Sets.newHashSet();
+        Set<Sha256Hash> falsePositives = new HashSet<>();
         if (filteredTxHashList != null) falsePositives.addAll(filteredTxHashList);
 
         for (final ListenerRegistration<TransactionReceivedInBlockListener> registration : transactionReceivedListeners) {
@@ -611,20 +669,17 @@ public abstract class AbstractBlockChain {
             } else {
                 // Listener wants to be run on some other thread, so marshal it across here.
                 final boolean notFirst = !first;
-                registration.executor.execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            // We can't do false-positive handling when executing on another thread
-                            Set<Sha256Hash> ignoredFalsePositives = Sets.newHashSet();
-                            informListenerForNewTransactions(block, newBlockType, filteredTxHashList, filteredTxn,
-                                    newStoredBlock, notFirst, registration.listener, ignoredFalsePositives);
-                        } catch (VerificationException e) {
-                            log.error("Block chain listener threw exception: ", e);
-                            // Don't attempt to relay this back to the original peer thread if this was an async
-                            // listener invocation.
-                            // TODO: Make exception reporting a global feature and use it here.
-                        }
+                registration.executor.execute(() -> {
+                    try {
+                        // We can't do false-positive handling when executing on another thread
+                        Set<Sha256Hash> ignoredFalsePositives = new HashSet<>();
+                        informListenerForNewTransactions(block, newBlockType, filteredTxHashList, filteredTxn,
+                                newStoredBlock, notFirst, registration.listener, ignoredFalsePositives);
+                    } catch (VerificationException e) {
+                        log.error("Block chain listener threw exception: ", e);
+                        // Don't attempt to relay this back to the original peer thread if this was an async
+                        // listener invocation.
+                        // TODO: Make exception reporting a global feature and use it here.
                     }
                 });
             }
@@ -637,18 +692,15 @@ public abstract class AbstractBlockChain {
                     registration.listener.notifyNewBestBlock(newStoredBlock);
             } else {
                 // Listener wants to be run on some other thread, so marshal it across here.
-                registration.executor.execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            if (newBlockType == NewBlockType.BEST_CHAIN)
-                                registration.listener.notifyNewBestBlock(newStoredBlock);
-                        } catch (VerificationException e) {
-                            log.error("Block chain listener threw exception: ", e);
-                            // Don't attempt to relay this back to the original peer thread if this was an async
-                            // listener invocation.
-                            // TODO: Make exception reporting a global feature and use it here.
-                        }
+                registration.executor.execute(() -> {
+                    try {
+                        if (newBlockType == NewBlockType.BEST_CHAIN)
+                            registration.listener.notifyNewBestBlock(newStoredBlock);
+                    } catch (VerificationException e) {
+                        log.error("Block chain listener threw exception: ", e);
+                        // Don't attempt to relay this back to the original peer thread if this was an async
+                        // listener invocation.
+                        // TODO: Make exception reporting a global feature and use it here.
                     }
                 });
             }
@@ -664,13 +716,13 @@ public abstract class AbstractBlockChain {
                                                          StoredBlock newStoredBlock, boolean first,
                                                          TransactionReceivedInBlockListener listener,
                                                          Set<Sha256Hash> falsePositives) throws VerificationException {
-        if (block.transactions != null) {
+        if (block.getTransactions() != null) {
             // If this is not the first wallet, ask for the transactions to be duplicated before being given
             // to the wallet when relevant. This ensures that if we have two connected wallets and a tx that
             // is relevant to both of them, they don't end up accidentally sharing the same object (which can
             // result in temporary in-memory corruption during re-orgs). See bug 257. We only duplicate in
             // the case of multiple wallets to avoid an unnecessary efficiency hit in the common case.
-            sendTransactionsToListener(newStoredBlock, newBlockType, listener, 0, block.transactions,
+            sendTransactionsToListener(newStoredBlock, newBlockType, listener, 0, block.getTransactions(),
                     !first, falsePositives);
         } else if (filteredTxHashList != null) {
             checkNotNull(filteredTxn);
@@ -711,6 +763,7 @@ public abstract class AbstractBlockChain {
     /**
      * Disconnect each transaction in the block (after reading it from the block store)
      * Only called if(shouldVerifyTransactions())
+     * @param block block to disconnect
      * @throws PrunedException if block does not exist as a {@link StoredUndoableBlock} in the block store.
      * @throws BlockStoreException if the block store had an underlying error or block does not exist in the block store at all.
      */
@@ -779,14 +832,11 @@ public abstract class AbstractBlockChain {
                 // TODO: Do we really need to do this or should it be irrelevant?
                 registration.listener.reorganize(splitPoint, oldBlocks, newBlocks);
             } else {
-                registration.executor.execute(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            registration.listener.reorganize(splitPoint, oldBlocks, newBlocks);
-                        } catch (VerificationException e) {
-                            log.error("Block chain listener threw exception during reorg", e);
-                        }
+                registration.executor.execute(() -> {
+                    try {
+                        registration.listener.reorganize(splitPoint, oldBlocks, newBlocks);
+                    } catch (VerificationException e) {
+                        log.error("Block chain listener threw exception during reorg", e);
                     }
                 });
             }
@@ -802,11 +852,10 @@ public abstract class AbstractBlockChain {
         checkArgument(higher.getHeight() > lower.getHeight(), "higher and lower are reversed");
         LinkedList<StoredBlock> results = new LinkedList<>();
         StoredBlock cursor = higher;
-        while (true) {
+        do {
             results.add(cursor);
             cursor = checkNotNull(cursor.getPrev(store), "Ran off the end of the chain");
-            if (cursor.equals(lower)) break;
-        }
+        } while (!cursor.equals(lower));
         return results;
     }
 
@@ -844,8 +893,13 @@ public abstract class AbstractBlockChain {
         return getChainHead().getHeight();
     }
 
+    /**
+     * Indicates whether new Block was on the best chain or not
+     */
     public enum NewBlockType {
+        /** New block is on the best chain */
         BEST_CHAIN,
+        /** New block is on a side chain */
         SIDE_CHAIN
     }
 
@@ -872,6 +926,10 @@ public abstract class AbstractBlockChain {
         }
     }
 
+    /**
+     * @param chainHead chain head to set
+     * @throws BlockStoreException if a failure occurs while storing a block
+     */
     protected void setChainHead(StoredBlock chainHead) throws BlockStoreException {
         doSetChainHead(chainHead);
         synchronized (chainHeadLock) {
@@ -920,6 +978,7 @@ public abstract class AbstractBlockChain {
     /**
      * Returns the block at the head of the current best chain. This is the block which represents the greatest
      * amount of cumulative work done.
+     * @return block at the head of the current best chain
      */
     public StoredBlock getChainHead() {
         synchronized (chainHeadLock) {
@@ -929,10 +988,11 @@ public abstract class AbstractBlockChain {
 
     /**
      * An orphan block is one that does not connect to the chain anywhere (ie we can't find its parent, therefore
-     * it's an orphan). Typically this occurs when we are downloading the chain and didn't reach the head yet, and/or
+     * it's an orphan). Typically, this occurs when we are downloading the chain and didn't reach the head yet, and/or
      * if a block is solved whilst we are downloading. It's possible that we see a small amount of orphan blocks which
      * chain together, this method tries walking backwards through the known orphan blocks to find the bottom-most.
      *
+     * @param from hash of block to walk backwards from
      * @return from or one of froms parents, or null if "from" does not identify an orphan block
      */
     @Nullable
@@ -952,7 +1012,11 @@ public abstract class AbstractBlockChain {
         }
     }
 
-    /** Returns true if the given block is currently in the orphan blocks list. */
+    /**
+     * Returns true if the given block is currently in the orphan blocks list.
+     * @param block block to check
+     * @return true if block is an orphan
+     */
     public boolean isOrphan(Sha256Hash block) {
         lock.lock();
         try {
@@ -967,6 +1031,8 @@ public abstract class AbstractBlockChain {
      * block. This is useful for turning transaction lock times into human readable times. Note that a height in
      * the past will still be estimated, even though the time of solving is actually known (we won't scan backwards
      * through the chain to obtain the right answer).
+     * @param height block time to estimate
+     * @return estimated date block will be mined
      */
     public Date estimateBlockTime(int height) {
         synchronized (chainHeadLock) {
@@ -980,39 +1046,42 @@ public abstract class AbstractBlockChain {
     /**
      * Returns a future that completes when the block chain has reached the given height. Yields the
      * {@link StoredBlock} of the block that reaches that height first. The future completes on a peer thread.
+     * @param height desired height
+     * @return future that will complete when height is reached
      */
-    public ListenableFuture<StoredBlock> getHeightFuture(final int height) {
-        final SettableFuture<StoredBlock> result = SettableFuture.create();
+    public ListenableCompletableFuture<StoredBlock> getHeightFuture(final int height) {
+        final ListenableCompletableFuture<StoredBlock> result = new ListenableCompletableFuture<>();
         addNewBestBlockListener(Threading.SAME_THREAD, new NewBestBlockListener() {
             @Override
             public void notifyNewBestBlock(StoredBlock block) throws VerificationException {
                 if (block.getHeight() >= height) {
                     removeNewBestBlockListener(this);
-                    result.set(block);
+                    result.complete(block);
                 }
             }
         });
         return result;
     }
 
-
-
     /**
      * The false positive rate is the average over all blockchain transactions of:
      *
      * - 1.0 if the transaction was false-positive (was irrelevant to all listeners)
      * - 0.0 if the transaction was relevant or filtered out
+     *
+     * @return the false positive rate
      */
     public double getFalsePositiveRate() {
         return falsePositiveRate;
     }
 
-    /*
+    /**
      * We completed handling of a filtered block. Update false-positive estimate based
      * on the total number of transactions in the original block.
      *
      * count includes filtered transactions, transactions that were passed in and were relevant
      * and transactions that were false positives (i.e. includes all transactions in the block).
+     * @param count total number of transactions in original block
      */
     protected void trackFilteredTransactions(int count) {
         // Track non-false-positives in batch.  Each non-false-positive counts as
@@ -1056,6 +1125,9 @@ public abstract class AbstractBlockChain {
         previousFalsePositiveRate = 0;
     }
 
+    /**
+     * @return version tally (not thread safe!)
+     */
     protected VersionTally getVersionTally() {
         return versionTally;
     }

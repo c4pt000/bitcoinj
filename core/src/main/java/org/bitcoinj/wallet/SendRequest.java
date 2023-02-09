@@ -17,29 +17,21 @@
 
 package org.bitcoinj.wallet;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-
-import java.math.BigInteger;
-import java.util.Date;
-
+import com.google.common.base.MoreObjects;
 import org.bitcoin.protocols.payments.Protos.PaymentDetails;
 import org.bitcoinj.core.Address;
-import org.bitcoinj.core.LegacyAddress;
-import org.bitcoinj.core.Coin;
+import org.bitcoinj.base.Coin;
 import org.bitcoinj.core.Context;
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.core.NetworkParameters;
 import org.bitcoinj.core.Transaction;
 import org.bitcoinj.core.TransactionOutput;
-import org.bitcoinj.script.Script;
-import org.bitcoinj.script.ScriptBuilder;
 import org.bitcoinj.utils.ExchangeRate;
 import org.bitcoinj.wallet.KeyChain.KeyPurpose;
 import org.bitcoinj.wallet.Wallet.MissingSigsMode;
 import org.bouncycastle.crypto.params.KeyParameter;
 
-import com.google.common.base.MoreObjects;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
  * A SendRequest gives the wallet information about precisely how to send money to a recipient or set of recipients.
@@ -77,22 +69,6 @@ public class SendRequest {
      * change address should be selected from this wallet, normally. <b>If null this will be chosen for you.</b>
      */
     public Address changeAddress = null;
-
-    /**
-     * <p>A transaction can have a fee attached, which is defined as the difference between the input values
-     * and output values. Any value taken in that is not provided to an output can be claimed by a miner. This
-     * is how mining is incentivized in later years of the Bitcoin system when inflation drops. It also provides
-     * a way for people to prioritize their transactions over others and is used as a way to make denial of service
-     * attacks expensive.</p>
-     *
-     * <p>This is a constant fee (in satoshis) which will be added to the transaction. It is recommended that it be
-     * at least {@link Transaction#REFERENCE_DEFAULT_MIN_TX_FEE} if it is set, as default Bitcoin Core will
-     * otherwise simply treat the transaction as if there were no fee at all.</p>
-     *
-     * <p>You might also consider adding a {@link SendRequest#feePerKb} to set the fee per kb of transaction size
-     * (rounded down to the nearest kb) as that is how transactions are sorted when added to a block by miners.</p>
-     */
-    public Coin fee = null;
 
     /**
      * <p>A transaction can have a fee attached, which is defined as the difference between the input values
@@ -143,6 +119,13 @@ public class SendRequest {
     public CoinSelector coinSelector = null;
 
     /**
+     * Shortcut for {@code req.coinSelector = AllowUnconfirmedCoinSelector.get();}.
+     */
+    public void allowUnconfirmed() {
+        coinSelector = AllowUnconfirmedCoinSelector.get();
+    }
+
+    /**
      * If true (the default), the outputs will be shuffled during completion to randomize the location of the change
      * output, if any. This is normally what you want for privacy reasons but in unit tests it can be annoying
      * so it can be disabled here.
@@ -181,12 +164,13 @@ public class SendRequest {
     /**
      * <p>Creates a new SendRequest to the given address for the given value.</p>
      *
-     * <p>Be very careful when value is smaller than {@link Transaction#MIN_NONDUST_OUTPUT} as the transaction will
-     * likely be rejected by the network in this case.</p>
+     * <p>Be careful to check the output's value is reasonable using
+     * {@link TransactionOutput#getMinNonDustValue(Coin)} afterwards or you risk having the transaction
+     * rejected by the network.</p>
      */
     public static SendRequest to(Address destination, Coin value) {
         SendRequest req = new SendRequest();
-        final NetworkParameters parameters = destination.getParameters();
+        final NetworkParameters parameters = NetworkParameters.fromAddress(destination);
         checkNotNull(parameters, "Address is for an unknown network");
         req.tx = new Transaction(parameters);
         req.tx.addOutput(value, destination);
@@ -217,7 +201,7 @@ public class SendRequest {
 
     public static SendRequest emptyWallet(Address destination) {
         SendRequest req = new SendRequest();
-        final NetworkParameters parameters = destination.getParameters();
+        final NetworkParameters parameters = NetworkParameters.fromAddress(destination);
         checkNotNull(parameters, "Address is for an unknown network");
         req.tx = new Transaction(parameters);
         req.tx.addOutput(Coin.ZERO, destination);
@@ -251,25 +235,6 @@ public class SendRequest {
         return req;
     }
 
-    public static SendRequest toCLTVPaymentChannel(NetworkParameters params, Date releaseTime, ECKey from, ECKey to, Coin value) {
-        long time = releaseTime.getTime() / 1000L;
-        checkArgument(time >= Transaction.LOCKTIME_THRESHOLD, "Release time was too small");
-        return toCLTVPaymentChannel(params, BigInteger.valueOf(time), from, to, value);
-    }
-
-    public static SendRequest toCLTVPaymentChannel(NetworkParameters params, int releaseBlock, ECKey from, ECKey to, Coin value) {
-        checkArgument(0 <= releaseBlock && releaseBlock < Transaction.LOCKTIME_THRESHOLD, "Block number was too large");
-        return toCLTVPaymentChannel(params, BigInteger.valueOf(releaseBlock), from, to, value);
-    }
-
-    public static SendRequest toCLTVPaymentChannel(NetworkParameters params, BigInteger time, ECKey from, ECKey to, Coin value) {
-        SendRequest req = new SendRequest();
-        Script output = ScriptBuilder.createCLTVPaymentChannelOutput(time, from, to);
-        req.tx = new Transaction(params);
-        req.tx.addOutput(value, output);
-        return req;
-    }
-
     /** Copy data from payment request. */
     public SendRequest fromPaymentDetails(PaymentDetails paymentDetails) {
         if (paymentDetails.hasMemo())
@@ -283,7 +248,6 @@ public class SendRequest {
         MoreObjects.ToStringHelper helper = MoreObjects.toStringHelper(this).omitNullValues();
         helper.add("emptyWallet", emptyWallet);
         helper.add("changeAddress", changeAddress);
-        helper.add("fee", fee);
         helper.add("feePerKb", feePerKb);
         helper.add("ensureMinRequiredFee", ensureMinRequiredFee);
         helper.add("signInputs", signInputs);
