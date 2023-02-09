@@ -20,7 +20,6 @@ package org.bitcoinj.core;
 import com.google.common.annotations.*;
 import com.google.common.base.*;
 import com.google.common.collect.*;
-import org.bitcoinj.params.AbstractBitcoinNetParams;
 import org.bitcoinj.script.*;
 import org.slf4j.*;
 
@@ -75,10 +74,7 @@ public class Block extends Message {
      */
     public static final int MAX_BLOCK_SIGOPS = MAX_BLOCK_SIZE / 50;
 
-    /** Standard maximum value for difficultyTarget (nBits) (Bitcoin MainNet and TestNet) */
-    public static final long STANDARD_MAX_DIFFICULTY_TARGET = 0x1d00ffffL;
-
-    /** A value for difficultyTarget (nBits) that allows (slightly less than) half of all possible hash solutions. Used in unit testing. */
+    /** A value for difficultyTarget (nBits) that allows half of all possible hash solutions. Used in unit testing. */
     public static final long EASIEST_DIFFICULTY_TARGET = 0x207fFFFFL;
 
     /** Value to use if the block height is unknown */
@@ -102,8 +98,8 @@ public class Block extends Message {
     private long difficultyTarget; // "nBits"
     private long nonce;
 
-    // If null, it means this object holds only the headers.
-    @VisibleForTesting
+    // TODO: Get rid of all the direct accesses to this field. It's a long-since unnecessary holdover from the Dalvik days.
+    /** If null, it means this object holds only the headers. */
     @Nullable List<Transaction> transactions;
 
     /** Stores the hash of the block. If null, getHash() will recalculate it. */
@@ -122,11 +118,22 @@ public class Block extends Message {
         super(params);
         // Set up a few basic things. We are not complete after this though.
         version = setVersion;
-        difficultyTarget = 0x1d07fff8L;
+       // difficultyTarget = 0x1d07fff8L;
+          difficultyTarget = 0x00000000L;
+
         time = Utils.currentTimeSeconds();
         prevBlockHash = Sha256Hash.ZERO_HASH;
 
         length = HEADER_SIZE;
+    }
+
+    /**
+     * Constructs a block object from the Bitcoin wire format.
+     * @deprecated Use {@link BitcoinSerializer#makeBlock(byte[])} instead.
+     */
+    @Deprecated
+    public Block(NetworkParameters params, byte[] payloadBytes) throws ProtocolException {
+        super(params, payloadBytes, 0, params.getDefaultSerializer(), payloadBytes.length);
     }
 
     /**
@@ -201,10 +208,18 @@ public class Block extends Message {
         this.transactions.addAll(transactions);
     }
 
-    /** @deprecated Use {@link AbstractBitcoinNetParams#getBlockInflation(int)} */
-    @Deprecated
+
+    /**
+     * <p>A utility method that calculates how much new Bitcoin would be created by the block at the given height.
+     * The inflation of Bitcoin is predictable and drops roughly every 4 years (210,000 blocks). At the dawn of
+     * the system it was 50 coins per block, in late 2012 it went to 25 coins per block, and so on. The size of
+     * a coinbase transaction is inflation plus fees.</p>
+     *
+     * <p>The half-life is controlled by {@link NetworkParameters#getSubsidyDecreaseBlockCount()}.
+     * </p>
+     */
     public Coin getBlockInflation(int height) {
-        return ((AbstractBitcoinNetParams) params).getBlockInflation(height);
+        return FIFTY_COINS.shiftRight(height / params.getSubsidyDecreaseBlockCount());
     }
 
     /**
@@ -223,9 +238,8 @@ public class Block extends Message {
             return;
         }
 
-        VarInt numTransactionsVarInt = readVarInt();
-        optimalEncodingMessageSize += numTransactionsVarInt.getSizeInBytes();
-        int numTransactions = numTransactionsVarInt.intValue();
+        int numTransactions = (int) readVarInt();
+        optimalEncodingMessageSize += VarInt.sizeOf(numTransactions);
         transactions = new ArrayList<>(Math.min(numTransactions, Utils.MAX_INITIAL_ARRAY_LENGTH));
         for (int i = 0; i < numTransactions; i++) {
             Transaction tx = new Transaction(params, payload, cursor, this, serializer, UNKNOWN_LENGTH, null);
@@ -255,40 +269,7 @@ public class Block extends Message {
         parseTransactions(offset + HEADER_SIZE);
         length = cursor - offset;
     }
-
-    public static Block createGenesis(NetworkParameters n) {
-        Block genesisBlock = new Block(n, BLOCK_VERSION_GENESIS);
-        Transaction t = createGenesisTransaction(n, genesisTxInputScriptBytes, FIFTY_COINS, genesisTxScriptPubKeyBytes);
-        genesisBlock.addTransaction(t);
-        return genesisBlock;
-    }
-
-    private static Transaction createGenesisTransaction(NetworkParameters n, byte[] inputScriptBytes, Coin amount, byte[] scriptPubKeyBytes) {
-        Transaction t = new Transaction(n);
-        t.addInput(new TransactionInput(n, t, inputScriptBytes));
-        t.addOutput(new TransactionOutput(n, t, amount, scriptPubKeyBytes));
-        return t;
-    }
-
-    // A script containing the difficulty bits and the following message:
-    //
-    //   "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
-    private static final byte[] genesisTxInputScriptBytes = Utils.HEX.decode
-                ("04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73");
-
-    private static final byte[] genesisTxScriptPubKeyBytes;
-    static {
-        ByteArrayOutputStream scriptPubKeyBytes = new ByteArrayOutputStream();
-        try {
-            Script.writeBytes(scriptPubKeyBytes, Utils.HEX.decode
-                    ("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"));
-        } catch (IOException e) {
-            throw new RuntimeException(e); // Cannot happen.
-        }
-        scriptPubKeyBytes.write(ScriptOpCodes.OP_CHECKSIG);
-        genesisTxScriptPubKeyBytes = scriptPubKeyBytes.toByteArray();
-    }
-
+    
     public int getOptimalEncodingMessageSize() {
         if (optimalEncodingMessageSize != 0)
             return optimalEncodingMessageSize;
@@ -325,9 +306,11 @@ public class Block extends Message {
             return;
         }
 
-        stream.write(new VarInt(transactions.size()).encode());
-        for (Transaction tx : transactions) {
-            tx.bitcoinSerialize(stream);
+        if (transactions != null) {
+            stream.write(new VarInt(transactions.size()).encode());
+            for (Transaction tx : transactions) {
+                tx.bitcoinSerialize(stream);
+            }
         }
     }
 
@@ -469,20 +452,23 @@ public class Block extends Message {
         return LARGEST_HASH.divide(target.add(BigInteger.ONE));
     }
 
-    /**
-     * Returns a copy of the block, but without any transactions.
-     * @return new, header-only {@code Block}
-     */
+    /** Returns a copy of the block, but without any transactions. */
     public Block cloneAsHeader() {
-        Block block = new Block(params, version);
-        block.difficultyTarget = difficultyTarget;
-        block.time = time;
+        Block block = new Block(params, BLOCK_VERSION_GENESIS);
+        copyBitcoinHeaderTo(block);
+        return block;
+    }
+
+    /** Copy the block without transactions into the provided empty block. */
+    protected final void copyBitcoinHeaderTo(final Block block) {
         block.nonce = nonce;
         block.prevBlockHash = prevBlockHash;
         block.merkleRoot = getMerkleRoot();
-        block.hash = getHash();
+        block.version = version;
+        block.time = time;
+        block.difficultyTarget = difficultyTarget;
         block.transactions = null;
-        return block;
+        block.hash = getHash();
     }
 
     /**
@@ -522,7 +508,6 @@ public class Block extends Message {
      * <p>This can loop forever if a solution cannot be found solely by incrementing nonce. It doesn't change
      * extraNonce.</p>
      */
-    @VisibleForTesting
     public void solve() {
         while (true) {
             try {
@@ -542,15 +527,20 @@ public class Block extends Message {
      * target is represented using a compact form. If this form decodes to a value that is out of bounds, an exception
      * is thrown.
      */
+    
+    //mod here
+    // <= 0 or > 0 here inverse
     public BigInteger getDifficultyTargetAsInteger() throws VerificationException {
         BigInteger target = Utils.decodeCompactBits(difficultyTarget);
         if (target.signum() <= 0 || target.compareTo(params.maxTarget) > 0)
-            throw new VerificationException("Difficulty target is bad: " + target.toString());
+          System.out.println("this would have thrown an exception for the difficulty target being invalid");
+            // throw new VerificationException("Difficulty target is bad: " + target.toString());
         return target;
     }
 
     /** Returns true if the hash of the block is OK (lower than difficulty target). */
-    protected boolean checkProofOfWork(boolean throwException) throws VerificationException {
+ 
+ protected boolean checkProofOfWork(boolean throwException) throws VerificationException {
         // This part is key - it is what proves the block was as difficult to make as it claims
         // to be. Note however that in the context of this function, the block can claim to be
         // as difficult as it wants to be .... if somebody was able to take control of our network
@@ -562,15 +552,23 @@ public class Block extends Message {
         BigInteger target = getDifficultyTargetAsInteger();
 
         BigInteger h = getHash().toBigInteger();
-        if (h.compareTo(target) > 0) {
+     // should never arrive at this point since less than 0 not greater than 0
+   
+      
+       if (h.compareTo(target) < 0) {
             // Proof of work check failed!
             if (throwException)
-                throw new VerificationException("Hash is higher than target: " + getHashAsString() + " vs "
-                        + target.toString(16));
+               throw new VerificationException("Hash is higher than target: " + getHashAsString() + " vs "
+                       + target.toString(16));
             else
                 return false;
         }
-        return true;
+     
+  
+     
+      return true;
+
+     
     }
 
     private void checkTimestamp() throws VerificationException {
@@ -798,7 +796,6 @@ public class Block extends Message {
     }
 
     /** Exists only for unit testing. */
-    @VisibleForTesting
     void setMerkleRoot(Sha256Hash value) {
         unCacheHeader();
         merkleRoot = value;
@@ -849,7 +846,6 @@ public class Block extends Message {
         return prevBlockHash;
     }
 
-    @VisibleForTesting
     void setPrevBlockHash(Sha256Hash prevBlockHash) {
         unCacheHeader();
         this.prevBlockHash = prevBlockHash;
@@ -871,7 +867,6 @@ public class Block extends Message {
         return new Date(getTimeSeconds()*1000);
     }
 
-    @VisibleForTesting
     public void setTime(long time) {
         unCacheHeader();
         this.time = time;
@@ -892,7 +887,6 @@ public class Block extends Message {
     }
 
     /** Sets the difficulty target in compact form. */
-    @VisibleForTesting
     public void setDifficultyTarget(long compactForm) {
         unCacheHeader();
         this.difficultyTarget = compactForm;
@@ -908,7 +902,6 @@ public class Block extends Message {
     }
 
     /** Sets the nonce and clears any cached data. */
-    @VisibleForTesting
     public void setNonce(long nonce) {
         unCacheHeader();
         this.nonce = nonce;
@@ -958,7 +951,7 @@ public class Block extends Message {
         adjustLength(transactions.size(), coinbase.length);
     }
 
-    private static final byte[] EMPTY_BYTES = new byte[32];
+    static final byte[] EMPTY_BYTES = new byte[32];
 
     // It's pretty weak to have this around at runtime: fix later.
     private static final byte[] pubkeyForTesting = new ECKey().getPubKey();
@@ -977,7 +970,6 @@ public class Block extends Message {
      * 
      * @param height block height, if known, or -1 otherwise.
      */
-    @VisibleForTesting
     Block createNextBlock(@Nullable final Address to, final long version,
                           @Nullable TransactionOutPoint prevOut, final long time,
                           final byte[] pubKey, final Coin coinbaseValue,

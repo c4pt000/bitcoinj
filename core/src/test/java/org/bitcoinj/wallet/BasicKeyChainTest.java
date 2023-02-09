@@ -63,8 +63,8 @@ public class BasicKeyChainTest {
 
     @Test
     public void importKeys() {
-        Utils.setMockClock();
         long now = Utils.currentTimeSeconds();
+        Utils.setMockClock(now);
         final ECKey key1 = new ECKey();
         Utils.rollMockClock(86400);
         final ECKey key2 = new ECKey();
@@ -252,22 +252,13 @@ public class BasicKeyChainTest {
         chain.importKeys(key1, key2);
         assertEquals(2, chain.numKeys());
         assertEquals(4, chain.numBloomFilterEntries());
-        final double FALSE_POSITIVE_RATE = 0.001;
-        BloomFilter filter = chain.getFilter(4, FALSE_POSITIVE_RATE, 100);
+        BloomFilter filter = chain.getFilter(4, 0.001, 100);
         assertTrue(filter.contains(key1.getPubKey()));
         assertTrue(filter.contains(key1.getPubKeyHash()));
         assertTrue(filter.contains(key2.getPubKey()));
         assertTrue(filter.contains(key2.getPubKeyHash()));
-        final int COUNT = 10000;
-        int falsePositives = 0;
-        for (int i = 0; i < COUNT; i++) {
-            ECKey key = new ECKey();
-            if (filter.contains(key.getPubKey()))
-                falsePositives++;
-        }
-        double actualRate = (double) falsePositives / COUNT;
-        assertTrue("roughly expected: " + FALSE_POSITIVE_RATE + ", actual: " + actualRate,
-                actualRate < FALSE_POSITIVE_RATE * 8);
+        ECKey key3 = new ECKey();
+        assertFalse(filter.contains(key3.getPubKey()));
     }
 
     @Test

@@ -22,7 +22,7 @@ var bcj = org.bitcoinj;
 var params = bcj.params.TestNet3Params.get();
 
 // Address where we'll send received coins (minus the miner fee)
-var FORWARD_TO = "mfZCyhQUQXy2S91hnGepdaJxfaNjMg15AV";
+var FORWARD_TO = "mfZCyhQUQXy2S91hnGepdaJxfaNjMg15AV";  // faucet.xeno-genesis.com
 
 // Make logging more compact.
 bcj.utils.BriefLogFormatter.init();

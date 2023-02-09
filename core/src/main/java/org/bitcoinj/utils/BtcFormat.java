@@ -20,7 +20,7 @@ import org.bitcoinj.utils.BtcAutoFormat.Style;
 import static org.bitcoinj.utils.BtcAutoFormat.Style.*;
 
 import org.bitcoinj.core.Coin;
-import java.util.Objects;
+import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableList;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
@@ -680,7 +680,7 @@ public abstract class BtcFormat extends Format {
          *  <p>Note that by applying a pattern you override the configured formatting style of
          *  {@link BtcAutoFormat} instances.  */
         public Builder pattern(String val) {
-            if (!Strings.isNullOrEmpty(localizedPattern))
+            if (localizedPattern != "")
                 throw new IllegalStateException("You cannot invoke both pattern() and localizedPattern()");
             pattern = val;
             return this;
@@ -714,7 +714,7 @@ public abstract class BtcFormat extends Format {
          *  <p>Note that by applying a pattern you override the configured formatting style of
          *  {@link BtcAutoFormat} instances.         */
         public Builder localizedPattern(String val) {
-            if (!Strings.isNullOrEmpty(pattern))
+            if (pattern != "")
                 throw new IllegalStateException("You cannot invoke both pattern() and localizedPattern().");
             localizedPattern = val;
             return this;
@@ -724,16 +724,16 @@ public abstract class BtcFormat extends Format {
          *  to the state of this {@code Builder} instance at the time this method is invoked. */
         public BtcFormat build() {
             BtcFormat f = variant.newInstance(this);
-            if (!Strings.isNullOrEmpty(symbol) || !Strings.isNullOrEmpty(code)) { synchronized(f.numberFormat) {
+            if (symbol != "" || code != "") { synchronized(f.numberFormat) {
                 DecimalFormatSymbols defaultSigns = f.numberFormat.getDecimalFormatSymbols();
                 setSymbolAndCode(f.numberFormat,
-                        !Strings.isNullOrEmpty(symbol) ? symbol : defaultSigns.getCurrencySymbol(),
-                        !Strings.isNullOrEmpty(code) ? code : defaultSigns.getInternationalCurrencySymbol()
+                    symbol != "" ? symbol : defaultSigns.getCurrencySymbol(),
+                    code != "" ? code : defaultSigns.getInternationalCurrencySymbol()
                 );
             }}
-            if (!Strings.isNullOrEmpty(localizedPattern) || !Strings.isNullOrEmpty(pattern)) {
+            if (localizedPattern != "" || pattern != "") {
                 int places = f.numberFormat.getMinimumFractionDigits();
-                if (!Strings.isNullOrEmpty(localizedPattern)) f.numberFormat.applyLocalizedPattern(negify(localizedPattern));
+                if (localizedPattern != "") f.numberFormat.applyLocalizedPattern(negify(localizedPattern));
                 else f.numberFormat.applyPattern(negify(pattern));
                 f.numberFormat.setMinimumFractionDigits(places);
                 f.numberFormat.setMaximumFractionDigits(places);
@@ -1588,7 +1588,7 @@ public abstract class BtcFormat extends Format {
      *  @see java.lang.Object#hashCode
      */
     @Override public int hashCode() {
-        return Objects.hash(pattern(), symbols(), minimumFractionDigits, decimalGroups);
+        return Objects.hashCode(pattern(), symbols(), minimumFractionDigits, decimalGroups);
     }
 
 }

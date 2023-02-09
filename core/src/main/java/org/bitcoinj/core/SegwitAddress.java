@@ -23,9 +23,9 @@ import java.io.ByteArrayOutputStream;
 
 import javax.annotation.Nullable;
 
-import com.google.common.primitives.UnsignedBytes;
 import org.bitcoinj.params.Networks;
 import org.bitcoinj.script.Script;
+import org.bitcoinj.script.Script.ScriptType;
 
 /**
  * <p>Implementation of native segwit addresses. They are composed of two parts:</p>
@@ -37,8 +37,7 @@ import org.bitcoinj.script.Script;
  * bits into groups of 5).</li>
  * </ul>
  *
- * <p>See <a href="https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki">BIP350</a> and
- * <a href="https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki">BIP173</a> for details.</p>
+ * <p>See <a href="https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki">BIP173</a> for details.</p>
  *
  * <p>However, you don't need to care about the internals. Use {@link #fromBech32(NetworkParameters, String)},
  * {@link #fromHash(NetworkParameters, byte[])} or {@link #fromKey(NetworkParameters, ECKey)} to construct a native
@@ -47,7 +46,6 @@ import org.bitcoinj.script.Script;
 public class SegwitAddress extends Address {
     public static final int WITNESS_PROGRAM_LENGTH_PKH = 20;
     public static final int WITNESS_PROGRAM_LENGTH_SH = 32;
-    public static final int WITNESS_PROGRAM_LENGTH_TR = 32;
     public static final int WITNESS_PROGRAM_MIN_LENGTH = 2;
     public static final int WITNESS_PROGRAM_MAX_LENGTH = 40;
 
@@ -60,7 +58,7 @@ public class SegwitAddress extends Address {
      * @param witnessVersion
      *            version number between 0 and 16
      * @param witnessProgram
-     *            hash of pubkey, pubkey or script (depending on version)
+     *            hash of pubkey or script (for version 0)
      */
     private SegwitAddress(NetworkParameters params, int witnessVersion, byte[] witnessProgram)
             throws AddressFormatException {
@@ -107,7 +105,7 @@ public class SegwitAddress extends Address {
     }
 
     /**
-     * Returns the witness version in decoded form. Only versions 0 and 1 are in use right now.
+     * Returns the witness version in decoded form. Only version 0 is in use right now.
      * 
      * @return witness version, between 0 and 16
      */
@@ -132,27 +130,20 @@ public class SegwitAddress extends Address {
 
     /**
      * Get the type of output script that will be used for sending to the address. This is either
-     * {@link Script.ScriptType#P2WPKH} or {@link Script.ScriptType#P2WSH}.
+     * {@link ScriptType#P2WPKH} or {@link ScriptType#P2WSH}.
      * 
      * @return type of output script
      */
     @Override
-    public Script.ScriptType getOutputScriptType() {
+    public ScriptType getOutputScriptType() {
         int version = getWitnessVersion();
-        if (version == 0) {
-            int programLength = getWitnessProgram().length;
-            if (programLength == WITNESS_PROGRAM_LENGTH_PKH)
-                return Script.ScriptType.P2WPKH;
-            if (programLength == WITNESS_PROGRAM_LENGTH_SH)
-                return Script.ScriptType.P2WSH;
-            throw new IllegalStateException(); // cannot happen
-        } else if (version == 1) {
-            int programLength = getWitnessProgram().length;
-            if (programLength == WITNESS_PROGRAM_LENGTH_TR)
-                return Script.ScriptType.P2TR;
-            throw new IllegalStateException(); // cannot happen
-        }
-        throw new IllegalStateException("cannot handle: " + version);
+        checkState(version == 0);
+        int programLength = getWitnessProgram().length;
+        if (programLength == WITNESS_PROGRAM_LENGTH_PKH)
+            return ScriptType.P2WPKH;
+        if (programLength == WITNESS_PROGRAM_LENGTH_SH)
+            return ScriptType.P2WSH;
+        throw new IllegalStateException("Cannot happen.");
     }
 
     @Override
@@ -177,23 +168,14 @@ public class SegwitAddress extends Address {
         if (params == null) {
             for (NetworkParameters p : Networks.get()) {
                 if (bechData.hrp.equals(p.getSegwitAddressHrp()))
-                    return fromBechData(p, bechData);
+                    return new SegwitAddress(p, bechData.data);
             }
             throw new AddressFormatException.InvalidPrefix("No network found for " + bech32);
         } else {
             if (bechData.hrp.equals(params.getSegwitAddressHrp()))
-                return fromBechData(params, bechData);
+                return new SegwitAddress(params, bechData.data);
             throw new AddressFormatException.WrongNetwork(bechData.hrp);
         }
-    }
-
-    private static SegwitAddress fromBechData(NetworkParameters params, Bech32.Bech32Data bechData) {
-        final SegwitAddress address = new SegwitAddress(params, bechData.data);
-        final int witnessVersion = address.getWitnessVersion();
-        if ((witnessVersion == 0 && bechData.encoding != Bech32.Encoding.BECH32) ||
-                (witnessVersion != 0 && bechData.encoding != Bech32.Encoding.BECH32M))
-            throw new AddressFormatException.UnexpectedWitnessVersion("Unexpected witness version: " + witnessVersion);
-        return address;
     }
 
     /**
@@ -208,23 +190,6 @@ public class SegwitAddress extends Address {
      */
     public static SegwitAddress fromHash(NetworkParameters params, byte[] hash) {
         return new SegwitAddress(params, 0, hash);
-    }
-
-    /**
-     * Construct a {@link SegwitAddress} that represents the given program, which is either a pubkey, a pubkey hash
-     * or a script hash – depending on the script version. The resulting address will be either a P2WPKH, a P2WSH or
-     * a P2TR type of address.
-     *
-     * @param params
-     *            network this address is valid for
-     * @param witnessVersion
-     *            version number between 0 and 16
-     * @param witnessProgram
-     *            version dependent witness program
-     * @return constructed address
-     */
-    public static SegwitAddress fromProgram(NetworkParameters params, int witnessVersion, byte[] witnessProgram) {
-        return new SegwitAddress(params, witnessVersion, witnessProgram);
     }
 
     /**
@@ -248,10 +213,7 @@ public class SegwitAddress extends Address {
      * @return textual form encoded in bech32
      */
     public String toBech32() {
-        if (getWitnessVersion() == 0)
-            return Bech32.encode(Bech32.Encoding.BECH32, params.getSegwitAddressHrp(), bytes);
-        else
-            return Bech32.encode(Bech32.Encoding.BECH32M, params.getSegwitAddressHrp(), bytes);
+        return Bech32.encode(params.getSegwitAddressHrp(), bytes);
     }
 
     /**
@@ -284,20 +246,5 @@ public class SegwitAddress extends Address {
             throw new AddressFormatException("Could not convert bits, invalid padding");
         }
         return out.toByteArray();
-    }
-
-    /**
-     * {@inheritDoc}
-     *
-     * @param o other {@code Address} object
-     * @return comparison result
-     */
-    @Override
-    public int compareTo(Address o) {
-        int result = compareAddressPartial(o);
-        if (result != 0) return result;
-
-        // Compare the bytes
-        return UnsignedBytes.lexicographicalComparator().compare(this.bytes, o.bytes);
     }
 }
