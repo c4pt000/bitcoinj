@@ -51,8 +51,8 @@ public class MainNetParams extends AbstractBitcoinNetParams {
         majorityWindow = MAINNET_MAJORITY_WINDOW;
 
  genesisBlock.setDifficultyTarget(0x1e0ffff0L);
-        genesisBlock.setTime(1622171724L);
-        genesisBlock.setNonce(491158L);
+        genesisBlock.setTime(1675886721L);
+        genesisBlock.setNonce(1195632L);
         subsidyDecreaseBlockCount = 100000;
         spendableCoinbaseDepth = 10;
 
@@ -69,7 +69,7 @@ public class MainNetParams extends AbstractBitcoinNetParams {
         // transactions are handled. Duplicated transactions could occur in the case where a coinbase had the same
         // extraNonce and the same outputs but appeared at different heights, and greatly complicated re-org handling.
         // Having these here simplifies block connection logic considerably.
-        checkpoints.put(60000, Sha256Hash.wrap("cf23fe03d921012cfdfc2847bd6ef4a647bbb559d6eb57d6432d7bcb930d720f"));
+        checkpoints.put(600, Sha256Hash.wrap("1c0bfeebb428e46e8a96944f9adf027fe07140f7a011a4500b8db8ffa62bcbe7"));
 
         
         
