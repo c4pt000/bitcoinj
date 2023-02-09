@@ -60,7 +60,7 @@ public class TestNet3Params extends AbstractBitcoinNetParams {
         spendableCoinbaseDepth = 100;
         subsidyDecreaseBlockCount = 210000;
         String genesisHash = genesisBlock.getHashAsString();
-        checkState(genesisHash.equals("000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"));
+        checkState(genesisHash.equals("00000d80d1687b559e5075ca93ad69903e6315da8347aa42c8397935b483a197"));
 
         dnsSeeds = new String[] {
                 "testnet-seed.bitcoin.jonasschnelli.ch", // Jonas Schnelli
