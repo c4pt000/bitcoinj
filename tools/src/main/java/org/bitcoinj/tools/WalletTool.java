@@ -254,9 +254,8 @@ public class WalletTool {
         parser.accepts("peers").withRequiredArg();
         xpubkeysFlag = parser.accepts("xpubkeys").withRequiredArg();
         OptionSpec<String> outputFlag = parser.accepts("output").withRequiredArg();
-        parser.accepts("value").withRequiredArg();
-        OptionSpec<String> feePerVkbOption = parser.accepts("fee-per-vkb").withRequiredArg();
-        OptionSpec<String> feeSatPerVbyteOption = parser.accepts("fee-sat-per-vbyte").withRequiredArg();
+        OptionSpec<String> feePerKbOption = parser.accepts("fee-per-kb").withRequiredArg();
+        OptionSpec<String> feeSatPerByteOption = parser.accepts("fee-sat-per-byte").withRequiredArg();
         unixtimeFlag = parser.accepts("unixtime").withRequiredArg().ofType(Long.class);
         OptionSpec<String> conditionFlag = parser.accepts("condition").withRequiredArg();
         parser.accepts("locktime").withRequiredArg();
@@ -392,21 +391,21 @@ public class WalletTool {
                 if (options.has(paymentRequestLocation) && options.has(outputFlag)) {
                     System.err.println("--payment-request and --output cannot be used together.");
                     return;
-                } else if (options.has(feePerVkbOption) && options.has(feeSatPerVbyteOption)) {
+                } else if (options.has(feePerKbOption) && options.has(feeSatPerByteOption)) {
                     System.err.println("--fee-per-kb and --fee-sat-per-byte cannot be used together.");
                     return;
                 } else if (options.has(outputFlag)) {
-                    Coin feePerVkb = null;
-                    if (options.has(feePerVkbOption))
-                        feePerVkb = parseCoin((String) options.valueOf(feePerVkbOption));
-                    if (options.has(feeSatPerVbyteOption))
-                        feePerVkb = Coin.valueOf(Long.parseLong(options.valueOf(feeSatPerVbyteOption)) * 1000);
+                    Coin feePerKb = null;
+                    if (options.has(feePerKbOption))
+                        feePerKb = parseCoin((String) options.valueOf(feePerKbOption));
+                    if (options.has(feeSatPerByteOption))
+                        feePerKb = Coin.valueOf(Long.parseLong(options.valueOf(feeSatPerByteOption)) * 1000);
                     String lockTime = null;
                     if (options.has("locktime")) {
                         lockTime = (String) options.valueOf("locktime");
                     }
                     boolean allowUnconfirmed = options.has("allow-unconfirmed");
-                    send(outputFlag.values(options), feePerVkb, lockTime, allowUnconfirmed);
+                    send(outputFlag.values(options), feePerKb, lockTime, allowUnconfirmed);
                 } else if (options.has(paymentRequestLocation)) {
                     sendPaymentRequest(paymentRequestLocation.value(options), !options.has("no-pki"));
                 } else {
@@ -415,7 +414,7 @@ public class WalletTool {
                 }
                 break;
             case SEND_CLTVPAYMENTCHANNEL: {
-                if (options.has(feePerVkbOption) && options.has(feeSatPerVbyteOption)) {
+                if (options.has(feePerKbOption) && options.has(feeSatPerByteOption)) {
                     System.err.println("--fee-per-kb and --fee-sat-per-byte cannot be used together.");
                     return;
                 }
@@ -423,11 +422,11 @@ public class WalletTool {
                     System.err.println("You must specify a --output=addr:value");
                     return;
                 }
-                Coin feePerVkb = null;
-                if (options.has(feePerVkbOption))
-                    feePerVkb = parseCoin((String) options.valueOf(feePerVkbOption));
-                if (options.has(feeSatPerVbyteOption))
-                    feePerVkb = Coin.valueOf(Long.parseLong(options.valueOf(feeSatPerVbyteOption)) * 1000);
+                Coin feePerKb = null;
+                if (options.has(feePerKbOption))
+                    feePerKb = parseCoin((String) options.valueOf(feePerKbOption));
+                if (options.has(feeSatPerByteOption))
+                    feePerKb = Coin.valueOf(Long.parseLong(options.valueOf(feeSatPerByteOption)) * 1000);
                 if (!options.has("locktime")) {
                     System.err.println("You must specify a --locktime");
                     return;
@@ -438,10 +437,10 @@ public class WalletTool {
                     System.err.println("You must specify an address to refund money to after expiry: --refund-to=addr");
                     return;
                 }
-                sendCLTVPaymentChannel(refundFlag.value(options), outputFlag.value(options), feePerVkb, lockTime, allowUnconfirmed);
+                sendCLTVPaymentChannel(refundFlag.value(options), outputFlag.value(options), feePerKb, lockTime, allowUnconfirmed);
                 } break;
             case SETTLE_CLTVPAYMENTCHANNEL: {
-                if (options.has(feePerVkbOption) && options.has(feeSatPerVbyteOption)) {
+                if (options.has(feePerKbOption) && options.has(feeSatPerByteOption)) {
                     System.err.println("--fee-per-kb and --fee-sat-per-byte cannot be used together.");
                     return;
                 }
@@ -449,20 +448,20 @@ public class WalletTool {
                     System.err.println("You must specify a --output=addr:value");
                     return;
                 }
-                Coin feePerVkb = null;
-                if (options.has(feePerVkbOption))
-                    feePerVkb = parseCoin((String) options.valueOf(feePerVkbOption));
-                if (options.has(feeSatPerVbyteOption))
-                    feePerVkb = Coin.valueOf(Long.parseLong(options.valueOf(feeSatPerVbyteOption)) * 1000);
+                Coin feePerKb = null;
+                if (options.has(feePerKbOption))
+                    feePerKb = parseCoin((String) options.valueOf(feePerKbOption));
+                if (options.has(feeSatPerByteOption))
+                    feePerKb = Coin.valueOf(Long.parseLong(options.valueOf(feeSatPerByteOption)) * 1000);
                 boolean allowUnconfirmed = options.has("allow-unconfirmed");
                 if (!options.has(txHashFlag)) {
                     System.err.println("You must specify the transaction to spend: --txhash=tx-hash");
                     return;
                 }
-                settleCLTVPaymentChannel(txHashFlag.value(options), outputFlag.value(options), feePerVkb, allowUnconfirmed);
+                settleCLTVPaymentChannel(txHashFlag.value(options), outputFlag.value(options), feePerKb, allowUnconfirmed);
                 } break;
             case REFUND_CLTVPAYMENTCHANNEL: {
-                if (options.has(feePerVkbOption) && options.has(feeSatPerVbyteOption)) {
+                if (options.has(feePerKbOption) && options.has(feeSatPerByteOption)) {
                     System.err.println("--fee-per-kb and --fee-sat-per-byte cannot be used together.");
                     return;
                 }
@@ -470,17 +469,17 @@ public class WalletTool {
                     System.err.println("You must specify a --output=addr:value");
                     return;
                 }
-                Coin feePerVkb = null;
-                if (options.has(feePerVkbOption))
-                    feePerVkb = parseCoin((String) options.valueOf(feePerVkbOption));
-                if (options.has(feeSatPerVbyteOption))
-                    feePerVkb = Coin.valueOf(Long.parseLong(options.valueOf(feeSatPerVbyteOption)) * 1000);
+                Coin feePerKb = null;
+                if (options.has(feePerKbOption))
+                    feePerKb = parseCoin((String) options.valueOf(feePerKbOption));
+                if (options.has(feeSatPerByteOption))
+                    feePerKb = Coin.valueOf(Long.parseLong(options.valueOf(feeSatPerByteOption)) * 1000);
                 boolean allowUnconfirmed = options.has("allow-unconfirmed");
                 if (!options.has(txHashFlag)) {
                     System.err.println("You must specify the transaction to spend: --txhash=tx-hash");
                     return;
                 }
-                refundCLTVPaymentChannel(txHashFlag.value(options), outputFlag.value(options), feePerVkb, allowUnconfirmed);
+                refundCLTVPaymentChannel(txHashFlag.value(options), outputFlag.value(options), feePerKb, allowUnconfirmed);
             } break;
             case ENCRYPT: encrypt(); break;
             case DECRYPT: decrypt(); break;
@@ -646,48 +645,47 @@ public class WalletTool {
         }
     }
 
-    private static void send(List<String> outputs, Coin feePerVkb, String lockTimeStr, boolean allowUnconfirmed) throws VerificationException {
-        // Convert the input strings to outputs.
-        Transaction t = new Transaction(params);
-        for (String spec : outputs) {
-            try {
-                OutputSpec outputSpec = new OutputSpec(spec);
-                if (outputSpec.isAddress()) {
-                    t.addOutput(outputSpec.value, outputSpec.addr);
-                } else {
-                    t.addOutput(outputSpec.value, outputSpec.key);
-                }
-            } catch (AddressFormatException.WrongNetwork e) {
-                System.err.println("Malformed output specification, address is for a different network: " + spec);
-                return;
-            } catch (AddressFormatException e) {
-                System.err.println("Malformed output specification, could not parse as address: " + spec);
-                return;
-            } catch (NumberFormatException e) {
-                System.err.println("Malformed output specification, could not parse as value: " + spec);
-                return;
-            } catch (IllegalArgumentException e) {
-                System.err.println(e.getMessage());
-                return;
-            }
-        }
-        SendRequest req = SendRequest.forTx(t);
-        if (t.getOutputs().size() == 1 && t.getOutput(0).getValue().equals(wallet.getBalance())) {
-            log.info("Emptying out wallet, recipient may get less than what you expect");
-            req.emptyWallet = true;
-        }
-        if (feePerVkb != null)
-            req.setFeePerVkb(feePerVkb);
-        if (allowUnconfirmed) {
-            wallet.allowSpendingUnconfirmedTransactions();
-        }
-        if (password != null) {
-            req.aesKey = passwordToKey(true);
-            if (req.aesKey == null)
-                return;  // Error message already printed.
-        }
-
+    private static void send(List<String> outputs, Coin feePerKb, String lockTimeStr, boolean allowUnconfirmed) throws VerificationException {
         try {
+            // Convert the input strings to outputs.
+            Transaction t = new Transaction(params);
+            for (String spec : outputs) {
+                try {
+                    OutputSpec outputSpec = new OutputSpec(spec);
+                    if (outputSpec.isAddress()) {
+                        t.addOutput(outputSpec.value, outputSpec.addr);
+                    } else {
+                        t.addOutput(outputSpec.value, outputSpec.key);
+                    }
+                } catch (AddressFormatException.WrongNetwork e) {
+                    System.err.println("Malformed output specification, address is for a different network: " + spec);
+                    return;
+                } catch (AddressFormatException e) {
+                    System.err.println("Malformed output specification, could not parse as address: " + spec);
+                    return;
+                } catch (NumberFormatException e) {
+                    System.err.println("Malformed output specification, could not parse as value: " + spec);
+                    return;
+                } catch (IllegalArgumentException e) {
+                    System.err.println(e.getMessage());
+                    return;
+                }
+            }
+            SendRequest req = SendRequest.forTx(t);
+            if (t.getOutputs().size() == 1 && t.getOutput(0).getValue().equals(wallet.getBalance())) {
+                log.info("Emptying out wallet, recipient may get less than what you expect");
+                req.emptyWallet = true;
+            }
+            if (feePerKb != null)
+                req.feePerKb = feePerKb;
+            if (allowUnconfirmed) {
+                wallet.allowSpendingUnconfirmedTransactions();
+            }
+            if (password != null) {
+                req.aesKey = passwordToKey(true);
+                if (req.aesKey == null)
+                    return;  // Error message already printed.
+            }
             wallet.completeTx(req);
 
             try {
@@ -766,7 +764,7 @@ public class WalletTool {
         }
     }
 
-    private static void sendCLTVPaymentChannel(String refund, String output, Coin feePerVkb, String lockTimeStr, boolean allowUnconfirmed) throws VerificationException {
+    private static void sendCLTVPaymentChannel(String refund, String output, Coin feePerKb, String lockTimeStr, boolean allowUnconfirmed) throws VerificationException {
         try {
             // Convert the input strings to outputs.
             ECKey outputKey, refundKey;
@@ -810,8 +808,8 @@ public class WalletTool {
                 log.info("Emptying out wallet, recipient may get less than what you expect");
                 req.emptyWallet = true;
             }
-            if (feePerVkb != null)
-                req.setFeePerVkb(feePerVkb);
+            if (feePerKb != null)
+                req.feePerKb = feePerKb;
             if (allowUnconfirmed) {
                 wallet.allowSpendingUnconfirmedTransactions();
             }
@@ -854,7 +852,7 @@ public class WalletTool {
     /**
      * Settles a CLTV payment channel transaction given that we own both private keys (ie. for testing).
      */
-    private static void settleCLTVPaymentChannel(String txHash, String output, Coin feePerVkb, boolean allowUnconfirmed) {
+    private static void settleCLTVPaymentChannel(String txHash, String output, Coin feePerKb, boolean allowUnconfirmed) {
         try {
             OutputSpec outputSpec;
             Coin value;
@@ -878,8 +876,8 @@ public class WalletTool {
             SendRequest req = outputSpec.isAddress() ?
                     SendRequest.to(outputSpec.addr, value) :
                     SendRequest.to(params, outputSpec.key, value);
-            if (feePerVkb != null)
-                req.setFeePerVkb(feePerVkb);
+            if (feePerKb != null)
+                req.feePerKb = feePerKb;
 
             Transaction lockTimeVerify = wallet.getTransaction(Sha256Hash.wrap(txHash));
             if (lockTimeVerify == null) {
@@ -958,7 +956,7 @@ public class WalletTool {
     /**
      * Refunds a CLTV payment channel transaction after the lock time has expired.
      */
-    private static void refundCLTVPaymentChannel(String txHash, String output, Coin feePerVkb, boolean allowUnconfirmed) {
+    private static void refundCLTVPaymentChannel(String txHash, String output, Coin feePerKb, boolean allowUnconfirmed) {
         try {
             OutputSpec outputSpec;
             Coin value;
@@ -982,8 +980,8 @@ public class WalletTool {
             SendRequest req = outputSpec.isAddress() ?
                     SendRequest.to(outputSpec.addr, value) :
                     SendRequest.to(params, outputSpec.key, value);
-            if (feePerVkb != null)
-                req.setFeePerVkb(feePerVkb);
+            if (feePerKb != null)
+                req.feePerKb = feePerKb;
 
             Transaction lockTimeVerify = wallet.getTransaction(Sha256Hash.wrap(txHash));
             if (lockTimeVerify == null) {
@@ -1127,21 +1125,21 @@ public class WalletTool {
     }
 
     private static void send(PaymentSession session) {
-        System.out.println("Payment Request");
-        System.out.println("Coin: " + session.getValue().toFriendlyString());
-        System.out.println("Date: " + session.getDate());
-        System.out.println("Memo: " + session.getMemo());
-        if (session.pkiVerificationData != null) {
-            System.out.println("Pki-Verified Name: " + session.pkiVerificationData.displayName);
-            System.out.println("PKI data verified by: " + session.pkiVerificationData.rootAuthorityName);
-        }
-        final SendRequest req = session.getSendRequest();
-        if (password != null) {
-            req.aesKey = passwordToKey(true);
-            if (req.aesKey == null)
-                return;   // Error message already printed.
-        }
         try {
+            System.out.println("Payment Request");
+            System.out.println("Coin: " + session.getValue().toFriendlyString());
+            System.out.println("Date: " + session.getDate());
+            System.out.println("Memo: " + session.getMemo());
+            if (session.pkiVerificationData != null) {
+                System.out.println("Pki-Verified Name: " + session.pkiVerificationData.displayName);
+                System.out.println("PKI data verified by: " + session.pkiVerificationData.rootAuthorityName);
+            }
+            final SendRequest req = session.getSendRequest();
+            if (password != null) {
+                req.aesKey = passwordToKey(true);
+                if (req.aesKey == null)
+                    return;   // Error message already printed.
+            }
             wallet.completeTx(req);  // may throw InsufficientMoneyException.
             if (options.has("offline")) {
                 wallet.commitTx(req.tx);

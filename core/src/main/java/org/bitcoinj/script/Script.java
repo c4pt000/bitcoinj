@@ -69,7 +69,7 @@ public class Script {
         }
     }
 
-    /** Flags to pass to {@link Script#correctlySpends(Transaction, int, TransactionWitness, Coin, Script, Set)}.
+    /** Flags to pass to {@link Script#correctlySpends(Transaction, long, Script, Set)}.
      * Note currently only P2SH, DERSIG and NULLDUMMY are actually supported.
      */
     public enum VerifyFlag {
@@ -222,7 +222,7 @@ public class Script {
                 chunk = new ScriptChunk(opcode, null, startLocationInProgram);
             } else {
                 if (dataToRead > bis.available())
-                    throw new ScriptException(ScriptError.SCRIPT_ERR_BAD_OPCODE, "Push of data element that is larger than remaining data");
+                    throw new ScriptException(ScriptError.SCRIPT_ERR_BAD_OPCODE, "Push of data element that is larger than remaining data: " + dataToRead + " vs " + bis.available());
                 byte[] data = new byte[(int)dataToRead];
                 checkState(dataToRead == 0 || bis.read(data, 0, (int)dataToRead) == dataToRead);
                 chunk = new ScriptChunk(opcode, data, startLocationInProgram);
@@ -1545,6 +1545,23 @@ public class Script {
     }
 
     /**
+     * Verifies that this script (interpreted as a scriptSig) correctly spends the given scriptPubKey, enabling all
+     * validation rules.
+     * @param txContainingThis The transaction in which this input scriptSig resides.
+     *                         Accessing txContainingThis from another thread while this method runs results in undefined behavior.
+     * @param scriptSigIndex The index in txContainingThis of the scriptSig (note: NOT the index of the scriptPubKey).
+     * @param scriptPubKey The connected scriptPubKey containing the conditions needed to claim the value.
+     * @deprecated Use {@link #correctlySpends(Transaction, int, TransactionWitness, Coin, Script, Set)}
+     * instead so that verification flags do not change as new verification options
+     * are added.
+     */
+    @Deprecated
+    public void correctlySpends(Transaction txContainingThis, long scriptSigIndex, Script scriptPubKey)
+            throws ScriptException {
+        correctlySpends(txContainingThis, scriptSigIndex, scriptPubKey, ALL_VERIFY_FLAGS);
+    }
+
+    /**
      * Verifies that this script (interpreted as a scriptSig) correctly spends the given scriptPubKey.
      * @param txContainingThis The transaction in which this input scriptSig resides.
      *                         Accessing txContainingThis from another thread while this method runs results in undefined behavior.
@@ -1586,9 +1603,7 @@ public class Script {
      * @param scriptSigIndex The index in txContainingThis of the scriptSig (note: NOT the index of the scriptPubKey).
      * @param scriptPubKey The connected scriptPubKey containing the conditions needed to claim the value.
      * @param verifyFlags Each flag enables one validation rule.
-     * @deprecated Use {@link #correctlySpends(Transaction, int, TransactionWitness, Coin, Script, Set)} instead.
      */
-    @Deprecated
     public void correctlySpends(Transaction txContainingThis, long scriptSigIndex, Script scriptPubKey,
                                 Set<VerifyFlag> verifyFlags) throws ScriptException {
         // Clone the transaction because executing the script involves editing it, and if we die, we'll leave

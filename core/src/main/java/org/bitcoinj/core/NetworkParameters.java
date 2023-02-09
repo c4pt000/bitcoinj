@@ -46,6 +46,11 @@ import org.bitcoinj.utils.VersionTally;
  * them, you are encouraged to call the static get() methods on each specific params class directly.</p>
  */
 public abstract class NetworkParameters {
+    /**
+     * The alert signing key originally owned by Satoshi, and now passed on to Gavin along with a few others.
+     */
+    public static final byte[] SATOSHI_KEY = Utils.HEX.decode("04fc9702847840aaf195de8442ebecedf5b095cdbb9bc716bda9110971b28a49e0ead8564ff0db22209e0374782c093bb899692d524e9d6a6956e7c5ecbcd68284");
+
     /** The string returned by getId() for the main, production network where people trade things. */
     public static final String ID_MAINNET = "org.bitcoin.production";
     /** The string returned by getId() for the testnet. */
@@ -75,6 +80,7 @@ public abstract class NetworkParameters {
     protected String segwitAddressHrp;
     protected int interval;
     protected int targetTimespan;
+    protected byte[] alertSigningKey;
     protected int bip32HeaderP2PKHpub;
     protected int bip32HeaderP2PKHpriv;
     protected int bip32HeaderP2WPKHpub;
@@ -104,6 +110,7 @@ public abstract class NetworkParameters {
     protected volatile transient MessageSerializer defaultSerializer = null;
 
     protected NetworkParameters() {
+        alertSigningKey = SATOSHI_KEY;
         genesisBlock = createGenesis(this);
     }
 
@@ -115,13 +122,11 @@ public abstract class NetworkParameters {
             //
             //   "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
             byte[] bytes = Utils.HEX.decode
-                    ("04f0ff0f1e01043c4269746e657420737570706f7274696e67206368616e67657320746f2074686520426974636f696e206e6574776f726b20616e64206265796f6e6421");
-//04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73");
+                    ("04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73");
             t.addInput(new TransactionInput(n, t, bytes));
             ByteArrayOutputStream scriptPubKeyBytes = new ByteArrayOutputStream();
             Script.writeBytes(scriptPubKeyBytes, Utils.HEX.decode
-                    ("047dca2902dff8dc8f6f34f9f3741ca6f7a568d383059853bf0aaa5511af402ed929dc56a4c14f9a1d4447e8d5a08a2c9e26f6818d146cfbf55d496b9351f773b9"));
-//04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"));
+                    ("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"));
             scriptPubKeyBytes.write(ScriptOpCodes.OP_CHECKSIG);
             t.addOutput(new TransactionOutput(n, t, FIFTY_COINS, scriptPubKeyBytes.toByteArray()));
         } catch (Exception e) {
@@ -132,8 +137,8 @@ public abstract class NetworkParameters {
         return genesisBlock;
     }
 
-    public static final int TARGET_TIMESPAN = 4 * 60 * 60;  // 4 hours on average.
-    public static final int TARGET_SPACING = 1 * 60;  // 1 minutes per block.
+    public static final int TARGET_TIMESPAN = 14 * 24 * 60 * 60;  // 2 weeks per difficulty cycle, on average.
+    public static final int TARGET_SPACING = 10 * 60;  // 10 minutes per block.
     public static final int INTERVAL = TARGET_TIMESPAN / TARGET_SPACING;
     
     /**
@@ -146,7 +151,7 @@ public abstract class NetworkParameters {
     /**
      * The maximum number of coins to be generated
      */
-    public static final long MAX_COINS = 100000000;
+    public static final long MAX_COINS = 21000000;
 
     /**
      * The maximum money to be generated
@@ -329,6 +334,14 @@ public abstract class NetworkParameters {
         return maxTarget;
     }
 
+    /**
+     * The key used to sign {@link AlertMessage}s. You can use {@link ECKey#verify(byte[], byte[], byte[])} to verify
+     * signatures using it.
+     */
+    public byte[] getAlertSigningKey() {
+        return alertSigningKey;
+    }
+
     /** Returns the 4 byte header for BIP32 wallet P2PKH - public key part. */
     public int getBip32HeaderP2PKHpub() {
         return bip32HeaderP2PKHpub;
@@ -487,8 +500,7 @@ public abstract class NetworkParameters {
         BLOOM_FILTER(70000), // BIP37
         BLOOM_FILTER_BIP111(70011), // BIP111
         WITNESS_VERSION(70012),
-        FEEFILTER(70013), // BIP133
-        CURRENT(70003);
+        CURRENT(70012);
 
         private final int bitcoinProtocol;
 

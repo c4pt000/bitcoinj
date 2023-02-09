@@ -500,11 +500,11 @@ public abstract class BtcFormat extends Format {
      */
 
     /** The conventional international currency code for bitcoins: "BTC" */
-    private static final String COIN_CODE = "RADC";
+    private static final String COIN_CODE = "BTC";
     /** The default currency symbols for bitcoins */
-    private static final String COIN_SYMBOL = "R";
+    private static final String COIN_SYMBOL = "฿";
     /** An alternative currency symbol to use in locales where the default symbol is used for the national currency. */
-    protected static final String COIN_SYMBOL_ALT = "R";
+    protected static final String COIN_SYMBOL_ALT = "Ƀ";
 
     protected final DecimalFormat numberFormat; // warning: mutable
     protected final int minimumFractionDigits;

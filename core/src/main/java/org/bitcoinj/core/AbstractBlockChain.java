@@ -531,7 +531,6 @@ public abstract class AbstractBlockChain {
                 final Integer count = versionTally.getCountAtOrAbove(block.getVersion() + 1);
                 if (count != null
                     && count >= params.getMajorityRejectBlockOutdated()) {
-                    log.error("Block with hash {} has outdated version: version # = {}" , block.getHashAsString(), block.getVersion());
                     throw new VerificationException.BlockVersionOutOfDate(block.getVersion());
                 }
             }
