@@ -38,9 +38,9 @@ public class MainNetParams extends AbstractBitcoinNetParams {
         targetTimespan = TARGET_TIMESPAN;
         maxTarget = Utils.decodeCompactBits(0x1e0ffff0L);
         dumpedPrivateKeyHeader = 158;
-        addressHeader = 60;
+        addressHeader = 25;
         p2shHeader = 22;
-        segwitAddressHrp = "radc";
+        segwitAddressHrp = "bits";
         port = 8333;
         packetMagic = 0xd1d1d1d1L;
         bip32HeaderP2PKHpub = 0x02facafd; //The 4 byte header that serializes in base58 to "dgub".
@@ -58,7 +58,7 @@ public class MainNetParams extends AbstractBitcoinNetParams {
 
         id = ID_MAINNET;
         String genesisHash = genesisBlock.getHashAsString();
-        checkState(genesisHash.equals("000007ce46e6c59844c34fa7ba5b27c8dac0653a27fcfb7340cc0158849e4afd"),
+        checkState(genesisHash.equals("0000049008321e63472304c0fc8d3937b7679cdb2144f8ebe8b8fb29e4deae94"),
                 genesisHash);
 
         majorityEnforceBlockUpgrade = MAINNET_MAJORITY_ENFORCE_BLOCK_UPGRADE;
@@ -75,8 +75,13 @@ public class MainNetParams extends AbstractBitcoinNetParams {
         
   // ?? risky business readding dogecoin dns seeds here to attempt experimentation with peer to peer "bloom filter bit" that might be missing from radiocoin dns seed points for android wallet support (in experimentation to match protocol header)
         dnsSeeds = new String[] {
-                "radiopool.me",
-            "46.101.169.238",
+                "multidoge.org",
+            "seed.multidoge.org",
+            "seed01.altcoinbuilders.com",
+            "seed02.altcoinbuilders.com",
+            "seed03.altcoinbuilders.com",
+            "seed04.altcoinbuilders.com",
+            "170.187.167.146",
             };
     }
     private static MainNetParams instance;
