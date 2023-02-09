@@ -17,15 +17,14 @@
 
 package org.bitcoinj.core;
 
-import org.bitcoinj.base.Coin;
-import org.bitcoinj.base.Sha256Hash;
-import org.bitcoinj.base.utils.ByteUtils;
-import org.bitcoinj.core.internal.InternalUtils;
 import org.bitcoinj.script.Script;
 import org.bitcoinj.script.ScriptException;
 import org.bitcoinj.wallet.DefaultRiskAnalysis;
 import org.bitcoinj.wallet.KeyBag;
 import org.bitcoinj.wallet.RedeemData;
+
+import com.google.common.base.Joiner;
+import com.google.common.base.Objects;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
@@ -33,7 +32,6 @@ import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.Map;
-import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkElementIndex;
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -175,7 +173,7 @@ public class TransactionInput extends ChildMessage {
         outpoint.bitcoinSerialize(stream);
         stream.write(new VarInt(scriptBytes.length).encode());
         stream.write(scriptBytes);
-        ByteUtils.uint32ToByteStreamLE(sequence, stream);
+        Utils.uint32ToByteStreamLE(sequence, stream);
     }
 
     /**
@@ -527,7 +525,7 @@ public class TransactionInput extends ChildMessage {
 
     @Override
     public int hashCode() {
-        return Objects.hash(sequence, outpoint, Arrays.hashCode(scriptBytes));
+        return Objects.hashCode(sequence, outpoint, Arrays.hashCode(scriptBytes));
     }
 
     /**
@@ -541,7 +539,7 @@ public class TransactionInput extends ChildMessage {
                 s.append(": COINBASE");
             } else {
                 s.append(" for [").append(outpoint).append("]: ").append(getScriptSig());
-                String flags = InternalUtils.commaJoin(hasWitness() ? "witness" : null,
+                String flags = Joiner.on(", ").skipNulls().join(hasWitness() ? "witness" : null,
                         hasSequence() ? "sequence: " + Long.toHexString(sequence) : null,
                         isOptInFullRBF() ? "opts into full RBF" : null);
                 if (!flags.isEmpty())

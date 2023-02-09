@@ -17,8 +17,6 @@
 
 package org.bitcoinj.core;
 
-import org.bitcoinj.base.Sha256Hash;
-
 import java.util.List;
 
 /**

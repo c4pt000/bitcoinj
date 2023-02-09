@@ -16,29 +16,13 @@
 
 package org.bitcoinj.store;
 
+import org.bitcoinj.core.*;
+import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
-import org.bitcoinj.base.ScriptType;
-import org.bitcoinj.core.Address;
-import org.bitcoinj.core.ECKey;
-import org.bitcoinj.core.NetworkParameters;
-import org.bitcoinj.base.Sha256Hash;
-import org.bitcoinj.core.StoredBlock;
-import org.bitcoinj.core.StoredUndoableBlock;
-import org.bitcoinj.core.Transaction;
-import org.bitcoinj.core.TransactionOutPoint;
-import org.bitcoinj.core.UTXO;
-import org.bitcoinj.core.UTXOProviderException;
-import org.bitcoinj.core.VerificationException;
+import com.google.common.collect.Lists;
 
 import javax.annotation.Nullable;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Used as a key for memory map (to avoid having to think about NetworkParameters,
@@ -77,7 +61,7 @@ class StoredTransactionOutPoint {
 
     @Override
     public int hashCode() {
-        return Objects.hash(getIndex(), getHash());
+        return Objects.hashCode(getIndex(), getHash());
     }
     
     @Override
@@ -90,7 +74,7 @@ class StoredTransactionOutPoint {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         StoredTransactionOutPoint other = (StoredTransactionOutPoint) o;
-        return getIndex() == other.getIndex() && Objects.equals(getHash(), other.getHash());
+        return getIndex() == other.getIndex() && Objects.equal(getHash(), other.getHash());
     }
 }
 
@@ -277,13 +261,15 @@ public class MemoryFullPrunedBlockStore implements FullPrunedBlockStore {
         try {
             StoredBlock storedGenesisHeader = new StoredBlock(params.getGenesisBlock().cloneAsHeader(), params.getGenesisBlock().getWork(), 0);
             // The coinbase in the genesis block is not spendable
-            List<Transaction> genesisTransactions = new LinkedList<>();
+            List<Transaction> genesisTransactions = Lists.newLinkedList();
             StoredUndoableBlock storedGenesis = new StoredUndoableBlock(params.getGenesisBlock().getHash(), genesisTransactions);
             put(storedGenesisHeader, storedGenesis);
             setChainHead(storedGenesisHeader);
             setVerifiedChainHead(storedGenesisHeader);
             this.params = params;
-        } catch (BlockStoreException | VerificationException e) {
+        } catch (BlockStoreException e) {
+            throw new RuntimeException(e);  // Cannot happen.
+        } catch (VerificationException e) {
             throw new RuntimeException(e);  // Cannot happen.
         }
     }
@@ -434,7 +420,7 @@ public class MemoryFullPrunedBlockStore implements FullPrunedBlockStore {
         for (UTXO output : outputsList) {
             for (ECKey key : keys) {
                 // TODO switch to pubKeyHash in order to support native segwit addresses
-                Address address = key.toAddress(ScriptType.P2PKH, params.network());
+                Address address = LegacyAddress.fromKey(params, key);
                 if (output.getAddress().equals(address.toString())) {
                     foundOutputs.add(output);
                 }

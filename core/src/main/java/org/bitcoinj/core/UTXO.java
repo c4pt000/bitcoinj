@@ -17,18 +17,12 @@
 
 package org.bitcoinj.core;
 
-import org.bitcoinj.base.Coin;
-import org.bitcoinj.base.Sha256Hash;
-import org.bitcoinj.base.utils.ByteUtils;
-import org.bitcoinj.script.Script;
+import org.bitcoinj.script.*;
+import com.google.common.base.Objects;
 
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.math.BigInteger;
+import java.io.*;
+import java.math.*;
 import java.util.Locale;
-import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -134,7 +128,7 @@ public class UTXO {
 
     @Override
     public int hashCode() {
-        return Objects.hash(getIndex(), getHash(), getValue());
+        return Objects.hashCode(getIndex(), getHash(), getValue());
     }
 
     @Override
@@ -146,13 +140,13 @@ public class UTXO {
     }
 
     public void serializeToStream(OutputStream bos) throws IOException {
-        ByteUtils.uint64ToByteStreamLE(BigInteger.valueOf(value.value), bos);
+        Utils.uint64ToByteStreamLE(BigInteger.valueOf(value.value), bos);
         byte[] scriptBytes = script.getProgram();
-        ByteUtils.uint32ToByteStreamLE(scriptBytes.length, bos);
+        Utils.uint32ToByteStreamLE(scriptBytes.length, bos);
         bos.write(scriptBytes);
         bos.write(hash.getBytes());
-        ByteUtils.uint32ToByteStreamLE(index, bos);
-        ByteUtils.uint32ToByteStreamLE(height, bos);
+        Utils.uint32ToByteStreamLE(index, bos);
+        Utils.uint32ToByteStreamLE(height, bos);
         bos.write(new byte[] { (byte)(coinbase ? 1 : 0) });
     }
 
@@ -160,9 +154,9 @@ public class UTXO {
         byte[] valueBytes = new byte[8];
         if (in.read(valueBytes, 0, 8) != 8)
             throw new EOFException();
-        Coin value = Coin.valueOf(ByteUtils.readInt64(valueBytes, 0));
+        Coin value = Coin.valueOf(Utils.readInt64(valueBytes, 0));
 
-        int scriptBytesLength = (int) ByteUtils.readUint32FromStream(in);
+        int scriptBytesLength = (int) Utils.readUint32FromStream(in);
         byte[] scriptBytes = new byte[scriptBytesLength];
         if (in.read(scriptBytes) != scriptBytesLength)
             throw new EOFException();
@@ -176,9 +170,9 @@ public class UTXO {
         byte[] indexBytes = new byte[4];
         if (in.read(indexBytes) != 4)
             throw new EOFException();
-        long index = ByteUtils.readUint32(indexBytes, 0);
+        long index = Utils.readUint32(indexBytes, 0);
 
-        int height = (int) ByteUtils.readUint32FromStream(in);
+        int height = (int) Utils.readUint32FromStream(in);
 
         byte[] coinbaseByte = new byte[1];
         in.read(coinbaseByte);

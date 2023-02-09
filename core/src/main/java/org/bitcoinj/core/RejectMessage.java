@@ -17,14 +17,11 @@
 
 package org.bitcoinj.core;
 
-import org.bitcoinj.base.Sha256Hash;
-
+import com.google.common.base.Objects;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
-import java.util.Objects;
-import java.util.stream.Stream;
 
 /**
  * <p>A message sent by nodes when a message we sent was rejected (ie a transaction had too little fee/was invalid/etc).</p>
@@ -64,15 +61,13 @@ public class RejectMessage extends Message {
         CHECKPOINT((byte) 0x43),
         OTHER((byte) 0xff);
 
-        final byte code;
-
+        byte code;
         RejectCode(byte code) { this.code = code; }
-
         static RejectCode fromCode(byte code) {
-            return Stream.of(RejectCode.values())
-                    .filter(r -> r.code == code)
-                    .findFirst()
-                    .orElse(OTHER);
+            for (RejectCode rejectCode : RejectCode.values())
+                if (rejectCode.code == code)
+                    return rejectCode;
+            return OTHER;
         }
     }
     private RejectCode code;
@@ -169,6 +164,6 @@ public class RejectMessage extends Message {
 
     @Override
     public int hashCode() {
-        return Objects.hash(message, code, reason, messageHash);
+        return Objects.hashCode(message, code, reason, messageHash);
     }
 }

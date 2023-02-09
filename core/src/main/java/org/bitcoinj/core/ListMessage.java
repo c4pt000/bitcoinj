@@ -17,14 +17,13 @@
 
 package org.bitcoinj.core;
 
-import com.google.common.base.MoreObjects;
-import org.bitcoinj.base.utils.ByteUtils;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
+import com.google.common.base.MoreObjects;
 
 /**
  * <p>Abstract superclass of classes with list based payload, ie InventoryMessage and GetDataMessage.</p>
@@ -100,7 +99,7 @@ public abstract class ListMessage extends Message {
         stream.write(new VarInt(items.size()).encode());
         for (InventoryItem i : items) {
             // Write out the type code.
-            ByteUtils.uint32ToByteStreamLE(i.type.code, stream);
+            Utils.uint32ToByteStreamLE(i.type.code, stream);
             // And now the hash.
             stream.write(i.hash.getReversedBytes());
         }

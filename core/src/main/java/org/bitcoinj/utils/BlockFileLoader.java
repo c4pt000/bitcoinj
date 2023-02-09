@@ -16,10 +16,12 @@
 
 package org.bitcoinj.utils;
 
-import org.bitcoinj.base.utils.ByteUtils;
+import static com.google.common.base.Preconditions.checkArgument;
+
 import org.bitcoinj.core.Block;
 import org.bitcoinj.core.NetworkParameters;
 import org.bitcoinj.core.ProtocolException;
+import org.bitcoinj.core.Utils;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -30,8 +32,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.NoSuchElementException;
-
-import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * <p>This class reads block files stored in the Bitcoin Core format. This is simply a way to concatenate
@@ -71,9 +71,16 @@ public class BlockFileLoader implements Iterable<Block>, Iterator<Block> {
     }
 
     public static File defaultBlocksDir() {
-        File defaultBlocksDir = AppDataDirectory.getPath("Bitcoin").resolve("blocks").toFile();
-        if (!defaultBlocksDir.isDirectory())
-            throw new RuntimeException("Default blocks directory not found");
+        final File defaultBlocksDir;
+        if (Utils.isWindows()) {
+            defaultBlocksDir = new File(System.getenv("APPDATA") + "\\.bitcoin\\blocks\\");
+        } else if (Utils.isMac()) {
+            defaultBlocksDir = new File(System.getProperty("user.home") + "/Library/Application Support/Bitcoin/blocks/");
+        } else if (Utils.isLinux()) {
+            defaultBlocksDir = new File(System.getProperty("user.home") + "/.bitcoin/blocks/");
+        } else {
+            throw new RuntimeException("Unsupported system");
+        }
         return defaultBlocksDir;
     }
 
@@ -156,7 +163,7 @@ public class BlockFileLoader implements Iterable<Block>, Iterator<Block> {
                 }
                 byte[] bytes = new byte[4];
                 currentFileStream.read(bytes, 0, 4);
-                long size = ByteUtils.readUint32BE(ByteUtils.reverseBytes(bytes), 0);
+                long size = Utils.readUint32BE(Utils.reverseBytes(bytes), 0);
                 bytes = new byte[(int) size];
                 currentFileStream.read(bytes, 0, (int) size);
                 try {

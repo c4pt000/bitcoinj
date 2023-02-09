@@ -17,23 +17,14 @@
 
 package org.bitcoinj.core;
 
-import org.bitcoinj.base.ScriptType;
-import org.bitcoinj.base.Sha256Hash;
-import org.bitcoinj.base.utils.ByteUtils;
-import org.bitcoinj.script.Script;
-import org.bitcoinj.script.ScriptError;
-import org.bitcoinj.script.ScriptException;
-import org.bitcoinj.script.ScriptPattern;
-import org.bitcoinj.wallet.KeyBag;
-import org.bitcoinj.wallet.RedeemData;
+import com.google.common.base.Objects;
+import org.bitcoinj.script.*;
+import org.bitcoinj.wallet.*;
 
-import javax.annotation.Nullable;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.util.Objects;
+import javax.annotation.*;
+import java.io.*;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.base.Preconditions.*;
 
 /**
  * <p>This message is a reference or pointer to an output of a different transaction.</p>
@@ -109,7 +100,7 @@ public class TransactionOutPoint extends ChildMessage {
     @Override
     protected void bitcoinSerializeToStream(OutputStream stream) throws IOException {
         stream.write(hash.getReversedBytes());
-        ByteUtils.uint32ToByteStreamLE(index, stream);
+        Utils.uint32ToByteStreamLE(index, stream);
     }
 
     /**
@@ -152,10 +143,10 @@ public class TransactionOutPoint extends ChildMessage {
         Script connectedScript = connectedOutput.getScriptPubKey();
         if (ScriptPattern.isP2PKH(connectedScript)) {
             byte[] addressBytes = ScriptPattern.extractHashFromP2PKH(connectedScript);
-            return keyBag.findKeyFromPubKeyHash(addressBytes, ScriptType.P2PKH);
+            return keyBag.findKeyFromPubKeyHash(addressBytes, Script.ScriptType.P2PKH);
         } else if (ScriptPattern.isP2WPKH(connectedScript)) {
             byte[] addressBytes = ScriptPattern.extractHashFromP2WH(connectedScript);
-            return keyBag.findKeyFromPubKeyHash(addressBytes, ScriptType.P2WPKH);
+            return keyBag.findKeyFromPubKeyHash(addressBytes, Script.ScriptType.P2WPKH);
         } else if (ScriptPattern.isP2PK(connectedScript)) {
             byte[] pubkeyBytes = ScriptPattern.extractKeyFromP2PK(connectedScript);
             return keyBag.findKeyFromPubKey(pubkeyBytes);
@@ -178,10 +169,10 @@ public class TransactionOutPoint extends ChildMessage {
         Script connectedScript = connectedOutput.getScriptPubKey();
         if (ScriptPattern.isP2PKH(connectedScript)) {
             byte[] addressBytes = ScriptPattern.extractHashFromP2PKH(connectedScript);
-            return RedeemData.of(keyBag.findKeyFromPubKeyHash(addressBytes, ScriptType.P2PKH), connectedScript);
+            return RedeemData.of(keyBag.findKeyFromPubKeyHash(addressBytes, Script.ScriptType.P2PKH), connectedScript);
         } else if (ScriptPattern.isP2WPKH(connectedScript)) {
             byte[] addressBytes = ScriptPattern.extractHashFromP2WH(connectedScript);
-            return RedeemData.of(keyBag.findKeyFromPubKeyHash(addressBytes, ScriptType.P2WPKH), connectedScript);
+            return RedeemData.of(keyBag.findKeyFromPubKeyHash(addressBytes, Script.ScriptType.P2WPKH), connectedScript);
         } else if (ScriptPattern.isP2PK(connectedScript)) {
             byte[] pubkeyBytes = ScriptPattern.extractKeyFromP2PK(connectedScript);
             return RedeemData.of(keyBag.findKeyFromPubKey(pubkeyBytes), connectedScript);
@@ -206,11 +197,6 @@ public class TransactionOutPoint extends ChildMessage {
         return hash;
     }
 
-    /**
-     * @param hash new hash
-     * @deprecated Don't mutate this class -- create a new instance instead.
-     */
-    @Deprecated
     void setHash(Sha256Hash hash) {
         this.hash = hash;
     }
@@ -218,12 +204,7 @@ public class TransactionOutPoint extends ChildMessage {
     public long getIndex() {
         return index;
     }
-
-    /**
-     * @param index new index
-     * @deprecated Don't mutate this class -- create a new instance instead.
-     */
-    @Deprecated
+    
     public void setIndex(long index) {
         this.index = index;
     }
@@ -238,6 +219,6 @@ public class TransactionOutPoint extends ChildMessage {
 
     @Override
     public int hashCode() {
-        return Objects.hash(getIndex(), getHash());
+        return Objects.hashCode(getIndex(), getHash());
     }
 }

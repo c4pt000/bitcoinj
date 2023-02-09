@@ -16,26 +16,25 @@
 
 package org.bitcoinj.core;
 
+import org.bitcoinj.store.BlockStore;
+import org.bitcoinj.store.BlockStoreException;
+import org.bitcoinj.store.FullPrunedBlockStore;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.Hasher;
 import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
-import org.bitcoinj.base.Sha256Hash;
-import org.bitcoinj.store.BlockStore;
-import org.bitcoinj.store.BlockStoreException;
-import org.bitcoinj.store.FullPrunedBlockStore;
+
 import org.bitcoinj.store.SPVBlockStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
+import javax.annotation.*;
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -45,10 +44,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.TreeMap;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkPositionIndex;
-import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.base.Preconditions.*;
 
 /**
  * <p>Vends hard-coded {@link StoredBlock}s for blocks throughout the chain. Checkpoints serve two purposes:</p>
@@ -89,8 +85,8 @@ public class CheckpointManager {
     public static final BaseEncoding BASE64 = BaseEncoding.base64().omitPadding();
 
     /** Loads the default checkpoints bundled with bitcoinj */
-    public CheckpointManager(NetworkParameters params) throws IOException {
-        this(params, null);
+    public CheckpointManager(Context context) throws IOException {
+        this(context.getParams(), null);
     }
 
     /** Loads the checkpoints from the given stream */
@@ -142,7 +138,7 @@ public class CheckpointManager {
                 if (dis.read(buffer.array(), 0, size) < size)
                     throw new IOException("Incomplete read whilst loading checkpoints.");
                 StoredBlock block = StoredBlock.deserializeCompact(params, buffer);
-                ((Buffer) buffer).position(0);
+                buffer.position(0);
                 checkpoints.put(block.getHeader().getTimeSeconds(), block);
             }
             Sha256Hash dataHash = Sha256Hash.wrap(digest.digest());
@@ -159,8 +155,9 @@ public class CheckpointManager {
 
     private Sha256Hash readTextual(InputStream inputStream) throws IOException {
         Hasher hasher = Hashing.sha256().newHasher();
-        try (BufferedReader reader =
-                     new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.US_ASCII))) {
+        BufferedReader reader = null;
+        try {
+            reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.US_ASCII));
             String magic = reader.readLine();
             if (!TEXTUAL_MAGIC.equals(magic))
                 throw new IOException("unexpected magic: " + magic);
@@ -176,9 +173,9 @@ public class CheckpointManager {
             for (int i = 0; i < numCheckpoints; i++) {
                 byte[] bytes = BASE64.decode(reader.readLine());
                 hasher.putBytes(bytes);
-                ((Buffer) buffer).position(0);
+                buffer.position(0);
                 buffer.put(bytes);
-                ((Buffer) buffer).position(0);
+                buffer.position(0);
                 StoredBlock block = StoredBlock.deserializeCompact(params, buffer);
                 checkpoints.put(block.getHeader().getTimeSeconds(), block);
             }
@@ -186,6 +183,8 @@ public class CheckpointManager {
             log.info("Read {} checkpoints up to time {}, hash is {}", checkpoints.size(),
                     Utils.dateTimeFormat(checkpoints.lastEntry().getKey() * 1000), hash);
             return Sha256Hash.wrap(hash.asBytes());
+        } finally {
+            if (reader != null) reader.close();
         }
     }
 

@@ -16,6 +16,7 @@
 
 package org.bitcoinj.utils;
 
+import com.google.common.collect.Maps;
 import com.google.protobuf.ByteString;
 
 import javax.annotation.Nullable;
@@ -25,23 +26,22 @@ import java.util.Map;
 import static com.google.common.base.Preconditions.checkNotNull;
 
 /**
- * A simple implementation of {@link TaggableObject} that uses a hashmap that is
- * synchronized on this object's Java monitor.
- * @deprecated Applications should use another mechanism to persist application state data
+ * A simple implementation of {@link TaggableObject} that just uses a lazily created hashmap that is
+ * synchronized on this objects Java monitor.
  */
-@Deprecated
 public class BaseTaggableObject implements TaggableObject {
-    protected final Map<String, ByteString> tags = new HashMap<>();
+    @Nullable protected Map<String, ByteString> tags;
 
     @Override
     @Nullable
-    @Deprecated
     public synchronized ByteString maybeGetTag(String tag) {
-        return tags.get(tag);
+        if (tags == null)
+            return null;
+        else
+            return tags.get(tag);
     }
 
     @Override
-    @Deprecated
     public ByteString getTag(String tag) {
         ByteString b = maybeGetTag(tag);
         if (b == null)
@@ -50,17 +50,19 @@ public class BaseTaggableObject implements TaggableObject {
     }
 
     @Override
-    @Deprecated
     public synchronized void setTag(String tag, ByteString value) {
-        // HashMap allows null keys and values, but we don't
         checkNotNull(tag);
         checkNotNull(value);
+        if (tags == null)
+            tags = new HashMap<>();
         tags.put(tag, value);
     }
 
     @Override
-    @Deprecated
     public synchronized Map<String, ByteString> getTags() {
-        return new HashMap<>(tags);
+        if (tags != null)
+            return Maps.newHashMap(tags);
+        else
+            return Maps.newHashMap();
     }
 }

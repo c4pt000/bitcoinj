@@ -17,7 +17,6 @@
 
 package org.bitcoinj.signers;
 
-import org.bitcoinj.base.ScriptType;
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.core.TransactionInput;
 import org.bitcoinj.core.TransactionWitness;
@@ -40,10 +39,9 @@ import org.slf4j.LoggerFactory;
 public class MissingSigResolutionSigner implements TransactionSigner {
     private static final Logger log = LoggerFactory.getLogger(MissingSigResolutionSigner.class);
 
-    private final Wallet.MissingSigsMode missingSigsMode;
+    public Wallet.MissingSigsMode missingSigsMode = Wallet.MissingSigsMode.USE_DUMMY_SIG;
 
     public MissingSigResolutionSigner() {
-        this(Wallet.MissingSigsMode.USE_DUMMY_SIG);
     }
 
     public MissingSigResolutionSigner(Wallet.MissingSigsMode missingSigsMode) {
@@ -99,7 +97,7 @@ public class MissingSigResolutionSigner implements TransactionSigner {
                         throw new ECKey.MissingPrivateKeyException();
                     } else if (missingSigsMode == Wallet.MissingSigsMode.USE_DUMMY_SIG) {
                         ECKey key = keyBag.findKeyFromPubKeyHash(
-                                ScriptPattern.extractHashFromP2WH(scriptPubKey), ScriptType.P2WPKH);
+                                ScriptPattern.extractHashFromP2WH(scriptPubKey), Script.ScriptType.P2WPKH);
                         txIn.setWitness(TransactionWitness.redeemP2WPKH(TransactionSignature.dummy(), key));
                     }
                 }

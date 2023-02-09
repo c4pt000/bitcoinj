@@ -16,18 +16,19 @@
 
 package org.bitcoinj.utils;
 
-import org.bitcoinj.base.utils.Fiat;
-import org.bitcoinj.base.Coin;
-
-import java.math.BigInteger;
-import java.util.Objects;
-
 import static com.google.common.base.Preconditions.checkArgument;
+
+import java.io.Serializable;
+import java.math.BigInteger;
+
+import org.bitcoinj.core.Coin;
+
+import com.google.common.base.Objects;
 
 /**
  * An exchange rate is expressed as a ratio of a {@link Coin} and a {@link Fiat} amount.
  */
-public class ExchangeRate {
+public class ExchangeRate implements Serializable {
 
     public final Coin coin;
     public final Fiat fiat;
@@ -85,11 +86,11 @@ public class ExchangeRate {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         ExchangeRate other = (ExchangeRate) o;
-        return Objects.equals(this.coin, other.coin) && Objects.equals(this.fiat, other.fiat);
+        return Objects.equal(this.coin, other.coin) && Objects.equal(this.fiat, other.fiat);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(coin, fiat);
+        return Objects.hashCode(coin, fiat);
     }
 }

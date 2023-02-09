@@ -1,5 +1,5 @@
 /*
- * Copyright by the original author or authors.
+ * Copyright 2011 Micheal Swiggs
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,13 @@
 
 package org.bitcoinj.net.discovery;
 
-import org.bitcoinj.base.utils.ByteUtils;
 import org.bitcoinj.core.NetworkParameters;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.bitcoinj.core.Utils;
 
 import javax.annotation.Nullable;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.LinkedList;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -37,27 +31,15 @@ import java.util.concurrent.TimeUnit;
  * to the network, in case IRC and DNS fail. The list comes from the Bitcoin C++ source code.
  */
 public class SeedPeers implements PeerDiscovery {
-    private final List<InetSocketAddress> seedAddrs;
+    private NetworkParameters params;
+    private int[] seedAddrs;
     private int pnseedIndex;
-
-    private static final Logger log = LoggerFactory.getLogger(SeedPeers.class);
-
-    /**
-     * Supports finding peers by IP addresses/ports
-     *
-     * @param seedAddrs IP addresses/ports of seeds.
-     */
-    public SeedPeers(InetSocketAddress[] seedAddrs) {
-        this.seedAddrs = Arrays.asList(seedAddrs);
-    }
 
     /**
      * Supports finding peers by IP addresses
      *
      * @param params Network parameters to be used for port information.
-     * @deprecated use {@link SeedPeers#SeedPeers(InetSocketAddress[])}
      */
-    @Deprecated
     public SeedPeers(NetworkParameters params) {
         this(params.getAddrSeeds(), params);
     }
@@ -65,23 +47,12 @@ public class SeedPeers implements PeerDiscovery {
     /**
      * Supports finding peers by IP addresses
      *
-     * @param seedAddrInts IP addresses for seed addresses.
-     * @param params    Network parameters to be used for port information.
-     * @deprecated use {@link SeedPeers#SeedPeers(InetSocketAddress[])}
+     * @param seedAddrs IP addresses for seed addresses.
+     * @param params Network parameters to be used for port information.
      */
-    @Deprecated
-    public SeedPeers(int[] seedAddrInts, NetworkParameters params) {
-        this.seedAddrs = new LinkedList<>();
-        if (seedAddrInts == null)
-            return;
-        for (int seedAddrInt : seedAddrInts) {
-            try {
-                InetSocketAddress seedAddr = new InetSocketAddress(convertAddress(seedAddrInt), params.getPort());
-                this.seedAddrs.add(seedAddr);
-            } catch (UnknownHostException x) {
-                // swallow
-            }
-        }
+    public SeedPeers(int[] seedAddrs, NetworkParameters params) {
+        this.seedAddrs = seedAddrs;
+        this.params = params;
     }
 
     /**
@@ -89,41 +60,56 @@ public class SeedPeers implements PeerDiscovery {
      * Once all the list has been iterated, null will be returned for each subsequent query.
      *
      * @return InetSocketAddress - The address/port of the next node.
+     * @throws PeerDiscoveryException
      */
     @Nullable
-    public InetSocketAddress getPeer() {
-        return nextPeer();
+    public InetSocketAddress getPeer() throws PeerDiscoveryException {
+        try {
+            return nextPeer();
+        } catch (UnknownHostException e) {
+            throw new PeerDiscoveryException(e);
+        }
     }
 
     @Nullable
-    private InetSocketAddress nextPeer() {
-        if (pnseedIndex >= seedAddrs.size())
-            return null;
-        return seedAddrs.get(pnseedIndex++);
+    private InetSocketAddress nextPeer() throws UnknownHostException, PeerDiscoveryException {
+        if (seedAddrs == null || seedAddrs.length == 0)
+            throw new PeerDiscoveryException("No IP address seeds configured; unable to find any peers");
+
+        if (pnseedIndex >= seedAddrs.length) return null;
+        return new InetSocketAddress(convertAddress(seedAddrs[pnseedIndex++]),
+                params.getPort());
     }
 
     /**
-     * Returns all the Bitcoin nodes within the list.
-     *
-     * @param services     ignored
-     * @param timeoutValue ignored
-     * @param timeoutUnit  ignored
-     * @return the pre-determined list of peers
+     * Returns an array containing all the Bitcoin nodes within the list.
      */
     @Override
-    public List<InetSocketAddress> getPeers(long services, long timeoutValue, TimeUnit timeoutUnit) {
+    public InetSocketAddress[] getPeers(long services, long timeoutValue, TimeUnit timeoutUnit) throws PeerDiscoveryException {
         if (services != 0)
-            log.info("Pre-determined peers cannot be filtered by services: {}", services);
-        return Collections.unmodifiableList(seedAddrs);
+            throw new PeerDiscoveryException("Pre-determined peers cannot be filtered by services: " + services);
+        try {
+            return allPeers();
+        } catch (UnknownHostException e) {
+            throw new PeerDiscoveryException(e);
+        }
+    }
+
+    private InetSocketAddress[] allPeers() throws UnknownHostException {
+        InetSocketAddress[] addresses = new InetSocketAddress[seedAddrs.length];
+        for (int i = 0; i < seedAddrs.length; ++i) {
+            addresses[i] = new InetSocketAddress(convertAddress(seedAddrs[i]), params.getPort());
+        }
+        return addresses;
+    }
+
+    private InetAddress convertAddress(int seed) throws UnknownHostException {
+        byte[] v4addr = new byte[4];
+        Utils.uint32ToByteArrayLE(seed, v4addr, 0);
+        return InetAddress.getByAddress(v4addr);
     }
 
     @Override
     public void shutdown() {
-    }
-
-    private static InetAddress convertAddress(int seed) throws UnknownHostException {
-        byte[] v4addr = new byte[4];
-        ByteUtils.uint32ToByteArrayLE(seed, v4addr, 0);
-        return InetAddress.getByAddress(v4addr);
     }
 }

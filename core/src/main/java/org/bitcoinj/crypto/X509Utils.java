@@ -16,6 +16,7 @@
 
 package org.bitcoinj.crypto;
 
+import com.google.common.base.Joiner;
 import org.bitcoinj.protocols.payments.PaymentSession;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ASN1String;
@@ -35,9 +36,6 @@ import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * X509Utils provides tools for working with X.509 certificates and keystores, as used in the BIP 70 payment protocol.
@@ -68,19 +66,15 @@ public class X509Utils {
             else if (type.equals(RFC4519Style.c))
                 country = val;
         }
+        final Collection<List<?>> subjectAlternativeNames = certificate.getSubjectAlternativeNames();
         String altName = null;
-        try {
-            final Collection<List<?>> subjectAlternativeNames = certificate.getSubjectAlternativeNames();
-            if (subjectAlternativeNames != null)
-                for (final List<?> subjectAlternativeName : subjectAlternativeNames)
-                    if ((Integer) subjectAlternativeName.get(0) == 1) // rfc822name
-                        altName = (String) subjectAlternativeName.get(1);
-        } catch (CertificateParsingException e) {
-            // swallow
-        }
+        if (subjectAlternativeNames != null)
+            for (final List<?> subjectAlternativeName : subjectAlternativeNames)
+                if ((Integer) subjectAlternativeName.get(0) == 1) // rfc822name
+                    altName = (String) subjectAlternativeName.get(1);
 
         if (org != null) {
-            return withLocation ? Stream.of(org, location, country).filter(Objects::nonNull).collect(Collectors.joining()) : org;
+            return withLocation ? Joiner.on(", ").skipNulls().join(org, location, country) : org;
         } else if (commonName != null) {
             return commonName;
         } else {
@@ -95,7 +89,9 @@ public class X509Utils {
             KeyStore keystore = KeyStore.getInstance(keystoreType);
             keystore.load(is, keystorePassword != null ? keystorePassword.toCharArray() : null);
             return keystore;
-        } catch (IOException | GeneralSecurityException x) {
+        } catch (IOException x) {
+            throw new KeyStoreException(x);
+        } catch (GeneralSecurityException x) {
             throw new KeyStoreException(x);
         } finally {
             try {

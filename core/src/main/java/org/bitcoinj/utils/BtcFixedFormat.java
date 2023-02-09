@@ -16,18 +16,17 @@
 
 package org.bitcoinj.utils;
 
-import org.bitcoinj.base.Coin;
+import static org.bitcoinj.core.Coin.SMALLEST_UNIT_EXPONENT;
+import static com.google.common.base.Preconditions.checkArgument;
+import com.google.common.base.Objects;
+import org.bitcoinj.core.Coin;
 
 import java.math.BigInteger;
 import java.text.DecimalFormat;
 import java.text.Format;
 import java.text.NumberFormat;
-import java.util.List;
 import java.util.Locale;
-import java.util.Objects;
-
-import static com.google.common.base.Preconditions.checkArgument;
-import static org.bitcoinj.base.Coin.SMALLEST_UNIT_EXPONENT;
+import java.util.List;
 
 /**
  * <p>This class, a concrete extension of {@link BtcFormat}, is distinguished in that each
@@ -147,7 +146,7 @@ public final class BtcFixedFormat extends BtcFormat {
      *  @see java.lang.Object#hashCode
      */
     @Override public int hashCode() {
-        return Objects.hash(super.hashCode(), scale);
+        return Objects.hashCode(super.hashCode(), scale);
     }
 
     private static String prefixLabel(int scale) {

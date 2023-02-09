@@ -16,11 +16,11 @@
 
 package org.bitcoinj.utils;
 
-import org.bitcoinj.core.Context;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.google.common.base.*;
+import org.bitcoinj.core.*;
+import org.slf4j.*;
 
-import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.*;
 
 /**
  * A {@link ThreadFactory} that propagates a {@link Context} from the creating
@@ -43,13 +43,16 @@ public class ContextPropagatingThreadFactory implements ThreadFactory {
     @Override
     public Thread newThread(final Runnable r) {
         final Context context = Context.get();
-        Thread thread = new Thread(() -> {
-            try {
-                Context.propagate(context);
-                r.run();
-            } catch (Exception e) {
-                log.error("Exception in thread", e);
-                throw e;
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Context.propagate(context);
+                    r.run();
+                } catch (Exception e) {
+                    log.error("Exception in thread", e);
+                    Throwables.propagate(e);
+                }
             }
         }, name);
         thread.setPriority(priority);

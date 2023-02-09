@@ -16,20 +16,20 @@
 
 package org.bitcoinj.utils;
 
-import org.bitcoinj.base.Coin;
+import static org.bitcoinj.core.Coin.SMALLEST_UNIT_EXPONENT;
+import com.google.common.collect.ImmutableList;
 
-import java.math.BigDecimal;
 import java.math.BigInteger;
+import static java.math.BigDecimal.ONE;
+import static java.math.BigDecimal.ZERO;
+import java.math.BigDecimal;
+import static java.math.RoundingMode.HALF_UP;
+
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.text.NumberFormat;
-import java.util.Collections;
-import java.util.Locale;
 
-import static java.math.BigDecimal.ONE;
-import static java.math.BigDecimal.ZERO;
-import static java.math.RoundingMode.HALF_UP;
-import static org.bitcoinj.base.Coin.SMALLEST_UNIT_EXPONENT;
+import java.util.Locale;
 
 /**
  * <p>This class, a concrete extension of {@link BtcFormat}, is distinguished by its
@@ -54,7 +54,7 @@ import static org.bitcoinj.base.Coin.SMALLEST_UNIT_EXPONENT;
  * @see          java.text.NumberFormat
  * @see          java.text.DecimalFormat
  * @see          DecimalFormatSymbols
- * @see          Coin
+ * @see          org.bitcoinj.core.Coin
  */
 
 public final class BtcAutoFormat extends BtcFormat {
@@ -109,7 +109,7 @@ public final class BtcAutoFormat extends BtcFormat {
 
     /** Constructor */
     protected BtcAutoFormat(Locale locale, Style style, int fractionPlaces) {
-        super((DecimalFormat)NumberFormat.getCurrencyInstance(locale), fractionPlaces, Collections.emptyList());
+        super((DecimalFormat)NumberFormat.getCurrencyInstance(locale), fractionPlaces, ImmutableList.<Integer>of());
         style.apply(this.numberFormat);
     }
 

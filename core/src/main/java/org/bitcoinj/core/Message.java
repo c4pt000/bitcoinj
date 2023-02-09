@@ -17,14 +17,10 @@
 
 package org.bitcoinj.core;
 
-import org.bitcoinj.base.Sha256Hash;
-import org.bitcoinj.base.utils.ByteUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 
@@ -272,7 +268,7 @@ public abstract class Message {
 
     protected long readUint32() throws ProtocolException {
         try {
-            long u = ByteUtils.readUint32(payload, cursor);
+            long u = Utils.readUint32(payload, cursor);
             cursor += 4;
             return u;
         } catch (ArrayIndexOutOfBoundsException e) {
@@ -282,7 +278,7 @@ public abstract class Message {
 
     protected long readInt64() throws ProtocolException {
         try {
-            long u = ByteUtils.readInt64(payload, cursor);
+            long u = Utils.readInt64(payload, cursor);
             cursor += 8;
             return u;
         } catch (ArrayIndexOutOfBoundsException e) {
@@ -292,7 +288,7 @@ public abstract class Message {
 
     protected BigInteger readUint64() throws ProtocolException {
         // Java does not have an unsigned 64 bit type. So scrape it off the wire then flip.
-        return new BigInteger(ByteUtils.reverseBytes(readBytes(8)));
+        return new BigInteger(Utils.reverseBytes(readBytes(8)));
     }
 
     protected VarInt readVarInt() throws ProtocolException {
@@ -316,7 +312,9 @@ public abstract class Message {
     }
 
     protected byte[] readBytes(int length) throws ProtocolException {
-        checkReadLength(length);
+        if ((length > MAX_SIZE) || (cursor + length > payload.length)) {
+            throw new ProtocolException("Claimed value length too large: " + length);
+        }
         try {
             byte[] b = new byte[length];
             System.arraycopy(payload, cursor, b, 0, length);
@@ -348,8 +346,23 @@ public abstract class Message {
         return Sha256Hash.wrapReversed(readBytes(32));
     }
 
+    protected boolean hasMoreBytes() {
+        return cursor < payload.length;
+    }
+
     /** Network parameters this message was created with. */
     public NetworkParameters getParams() {
         return params;
+    }
+
+    /**
+     * Set the serializer for this message when deserialized by Java.
+     */
+    private void readObject(ObjectInputStream in)
+        throws IOException, ClassNotFoundException {
+        in.defaultReadObject();
+        if (null != params) {
+            this.serializer = params.getDefaultSerializer();
+        }
     }
 }

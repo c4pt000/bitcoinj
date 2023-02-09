@@ -16,20 +16,14 @@
 
 package org.bitcoinj.crypto;
 
-import com.google.common.primitives.Bytes;
-import org.bitcoinj.base.Network;
-import org.bitcoinj.base.ScriptType;
-import org.bitcoinj.base.utils.ByteUtils;
-import org.bitcoinj.base.exceptions.AddressFormatException;
-import org.bitcoinj.base.Base58;
-import org.bitcoinj.core.ECKey;
-import org.bitcoinj.core.EncodedPrivateKey;
-import org.bitcoinj.core.NetworkParameters;
-import org.bitcoinj.base.Sha256Hash;
+import org.bitcoinj.core.*;
 import org.bouncycastle.crypto.generators.SCrypt;
+
+import com.google.common.primitives.Bytes;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
+
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -42,7 +36,7 @@ import static com.google.common.base.Preconditions.checkState;
  * Implementation of <a href="https://github.com/bitcoin/bips/blob/master/bip-0038.mediawiki">BIP 38</a>
  * passphrase-protected private keys. Currently, only decryption is supported.
  */
-public class BIP38PrivateKey extends EncodedPrivateKey {
+public class BIP38PrivateKey extends PrefixedChecksummedBytes {
     public final boolean ecMultiply;
     public final boolean compressed;
     public final boolean hasLotAndSequence;
@@ -54,14 +48,14 @@ public class BIP38PrivateKey extends EncodedPrivateKey {
 
     /**
      * Construct a password-protected private key from its Base58 representation.
-     * @param network
-     *            The network of the chain that the key is for.
+     * @param params
+     *            The network parameters of the chain that the key is for.
      * @param base58
      *            The textual form of the password-protected private key.
      * @throws AddressFormatException
      *             if the given base58 doesn't parse or the checksum is invalid
      */
-    public static BIP38PrivateKey fromBase58(Network network, String base58) throws AddressFormatException {
+    public static BIP38PrivateKey fromBase58(NetworkParameters params, String base58) throws AddressFormatException {
         byte[] versionAndDataBytes = Base58.decodeChecked(base58);
         int version = versionAndDataBytes[0] & 0xFF;
         byte[] bytes = Arrays.copyOfRange(versionAndDataBytes, 1, versionAndDataBytes.length);
@@ -99,27 +93,12 @@ public class BIP38PrivateKey extends EncodedPrivateKey {
         }
         byte[] addressHash = Arrays.copyOfRange(bytes, 2, 6);
         byte[] content = Arrays.copyOfRange(bytes, 6, 38);
-        return new BIP38PrivateKey(network, bytes, ecMultiply, compressed, hasLotAndSequence, addressHash, content);
+        return new BIP38PrivateKey(params, bytes, ecMultiply, compressed, hasLotAndSequence, addressHash, content);
     }
 
-    /**
-     * Construct a password-protected private key from its Base58 representation.
-     * @param params
-     *            The network of the chain that the key is for.
-     * @param base58
-     *            The textual form of the password-protected private key.
-     * @throws AddressFormatException
-     *             if the given base58 doesn't parse or the checksum is invalid
-     * @deprecated use {@link #fromBase58(Network, String)}
-     */
-    @Deprecated
-    public static BIP38PrivateKey fromBase58(NetworkParameters params, String base58) throws AddressFormatException {
-        return fromBase58(params.network(), base58);
-    }
-
-    private BIP38PrivateKey(Network network, byte[] bytes, boolean ecMultiply, boolean compressed,
+    private BIP38PrivateKey(NetworkParameters params, byte[] bytes, boolean ecMultiply, boolean compressed,
             boolean hasLotAndSequence, byte[] addressHash, byte[] content) throws AddressFormatException {
-        super(network, bytes);
+        super(params, bytes);
         this.ecMultiply = ecMultiply;
         this.compressed = compressed;
         this.hasLotAndSequence = hasLotAndSequence;
@@ -139,7 +118,7 @@ public class BIP38PrivateKey extends EncodedPrivateKey {
     public ECKey decrypt(String passphrase) throws BadPassphraseException {
         String normalizedPassphrase = Normalizer.normalize(passphrase, Normalizer.Form.NFC);
         ECKey key = ecMultiply ? decryptEC(normalizedPassphrase) : decryptNoEC(normalizedPassphrase);
-        Sha256Hash hash = Sha256Hash.twiceOf(key.toAddress(ScriptType.P2PKH, network).toString().getBytes(StandardCharsets.US_ASCII));
+        Sha256Hash hash = Sha256Hash.twiceOf(LegacyAddress.fromKey(params, key).toString().getBytes(StandardCharsets.US_ASCII));
         byte[] actualAddressHash = Arrays.copyOfRange(hash.getBytes(), 0, 4);
         if (!Arrays.equals(actualAddressHash, addressHash))
             throw new BadPassphraseException();
@@ -176,7 +155,7 @@ public class BIP38PrivateKey extends EncodedPrivateKey {
                 checkState(hashBytes.length == 40);
                 passFactorBytes = Sha256Hash.hashTwice(hashBytes);
             }
-            BigInteger passFactor = ByteUtils.bytesToBigInteger(passFactorBytes);
+            BigInteger passFactor = new BigInteger(1, passFactorBytes);
             ECKey k = ECKey.fromPrivate(passFactor, true);
 
             byte[] salt = Bytes.concat(addressHash, ownerEntropy);
@@ -202,7 +181,7 @@ public class BIP38PrivateKey extends EncodedPrivateKey {
 
             byte[] seed = Bytes.concat(decrypted1, Arrays.copyOfRange(decrypted2, 8, 16));
             checkState(seed.length == 24);
-            BigInteger seedFactor = ByteUtils.bytesToBigInteger(Sha256Hash.hashTwice(seed));
+            BigInteger seedFactor = new BigInteger(1, Sha256Hash.hashTwice(seed));
             checkState(passFactor.signum() >= 0);
             checkState(seedFactor.signum() >= 0);
             BigInteger priv = passFactor.multiply(seedFactor).mod(ECKey.CURVE.getN());

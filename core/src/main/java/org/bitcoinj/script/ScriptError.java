@@ -82,7 +82,7 @@ public enum ScriptError {
     private final String mnemonic;
     private static final Map<String, ScriptError> mnemonicToScriptErrorMap;
 
-    ScriptError(String name) {
+    private ScriptError(String name) {
         this.mnemonic = name;
     }
 

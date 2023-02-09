@@ -17,25 +17,18 @@
 
 package org.bitcoinj.script;
 
-import org.bitcoinj.base.utils.ByteUtils;
+import org.bitcoinj.core.Utils;
+import com.google.common.base.Objects;
 
 import javax.annotation.Nullable;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Arrays;
-import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkState;
-import static org.bitcoinj.script.ScriptOpCodes.OP_0;
-import static org.bitcoinj.script.ScriptOpCodes.OP_1;
-import static org.bitcoinj.script.ScriptOpCodes.OP_16;
-import static org.bitcoinj.script.ScriptOpCodes.OP_1NEGATE;
-import static org.bitcoinj.script.ScriptOpCodes.OP_PUSHDATA1;
-import static org.bitcoinj.script.ScriptOpCodes.OP_PUSHDATA2;
-import static org.bitcoinj.script.ScriptOpCodes.OP_PUSHDATA4;
-import static org.bitcoinj.script.ScriptOpCodes.getOpCodeName;
-import static org.bitcoinj.script.ScriptOpCodes.getPushDataName;
+import static org.bitcoinj.script.ScriptOpCodes.*;
 
 /**
  * A script element that is either a data push (signature, pubkey, etc) or a non-push (logic, numeric, etc) operation.
@@ -49,10 +42,16 @@ public class ScriptChunk {
      */
     @Nullable
     public final byte[] data;
+    private int startLocationInProgram;
 
     public ScriptChunk(int opcode, @Nullable byte[] data) {
+        this(opcode, data, -1);
+    }
+
+    public ScriptChunk(int opcode, @Nullable byte[] data, int startLocationInProgram) {
         this.opcode = opcode;
         this.data = data;
+        this.startLocationInProgram = startLocationInProgram;
     }
 
     public boolean equalsOpCode(int opcode) {
@@ -73,8 +72,14 @@ public class ScriptChunk {
         return opcode <= OP_16;
     }
 
+    public int getStartLocationInProgram() {
+        checkState(startLocationInProgram >= 0);
+        return startLocationInProgram;
+    }
+
     /** If this chunk is an OP_N opcode returns the equivalent integer value. */
     public int decodeOpN() {
+        checkState(isOpCode());
         return Script.decodeFromOpN(opcode);
     }
 
@@ -120,11 +125,11 @@ public class ScriptChunk {
             } else if (opcode == OP_PUSHDATA2) {
                 checkState(data.length <= 0xFFFF);
                 stream.write(OP_PUSHDATA2);
-                ByteUtils.uint16ToByteStreamLE(data.length, stream);
+                Utils.uint16ToByteStreamLE(data.length, stream);
             } else if (opcode == OP_PUSHDATA4) {
                 checkState(data.length <= Script.MAX_SCRIPT_ELEMENT_SIZE);
                 stream.write(OP_PUSHDATA4);
-                ByteUtils.uint32ToByteStreamLE(data.length, stream);
+                Utils.uint32ToByteStreamLE(data.length, stream);
             } else {
                 throw new RuntimeException("Unimplemented");
             }
@@ -145,27 +150,19 @@ public class ScriptChunk {
         return stream.toByteArray();
     }
 
-    /*
-     * The size, in bytes, that this chunk would occupy if serialized into a Script.
-     */
-    public int size() {
-        final int opcodeLength = 1;
-
-        int pushDataSizeLength = 0;
-        if (opcode == OP_PUSHDATA1) pushDataSizeLength = 1;
-        else if (opcode == OP_PUSHDATA2) pushDataSizeLength = 2;
-        else if (opcode == OP_PUSHDATA4) pushDataSizeLength = 4;
-
-        final int dataLength = data == null ? 0 : data.length;
-
-        return opcodeLength + pushDataSizeLength + dataLength;
-    }
-
     @Override
     public String toString() {
-        if (data == null)
-            return getOpCodeName(opcode);
-        return String.format("%s[%s]", getPushDataName(opcode), ByteUtils.HEX.encode(data));
+        StringBuilder buf = new StringBuilder();
+        if (isOpCode()) {
+            buf.append(getOpCodeName(opcode));
+        } else if (data != null) {
+            // Data chunk
+            buf.append(getPushDataName(opcode)).append("[").append(Utils.HEX.encode(data)).append("]");
+        } else {
+            // Small num
+            buf.append(Script.decodeFromOpN(opcode));
+        }
+        return buf.toString();
     }
 
     @Override
@@ -173,11 +170,12 @@ public class ScriptChunk {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         ScriptChunk other = (ScriptChunk) o;
-        return opcode == other.opcode && Arrays.equals(data, other.data);
+        return opcode == other.opcode && startLocationInProgram == other.startLocationInProgram
+            && Arrays.equals(data, other.data);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(opcode, Arrays.hashCode(data));
+        return Objects.hashCode(opcode, startLocationInProgram, Arrays.hashCode(data));
     }
 }

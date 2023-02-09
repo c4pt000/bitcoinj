@@ -17,9 +17,10 @@
 
 package org.bitcoinj.wallet;
 
-import org.bitcoinj.base.BitcoinNetwork;
+import org.bitcoinj.core.Coin;
 import org.bitcoinj.core.ECKey;
 import org.bitcoinj.core.ECKey.ECDSASignature;
+import org.bitcoinj.core.NetworkParameters;
 import org.bitcoinj.core.SignatureDecodeException;
 import org.bitcoinj.core.Transaction;
 import org.bitcoinj.core.TransactionConfidence;
@@ -31,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
+
 import java.util.List;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -42,6 +44,13 @@ import static com.google.common.base.Preconditions.checkState;
  */
 public class DefaultRiskAnalysis implements RiskAnalysis {
     private static final Logger log = LoggerFactory.getLogger(DefaultRiskAnalysis.class);
+
+    /**
+     * Any standard output smaller than this value (in satoshis) will be considered risky, as it's most likely be
+     * rejected by the network. This is usually the same as {@link Transaction#MIN_NONDUST_OUTPUT} but can be
+     * different when the fee is about to change in Bitcoin Core.
+     */
+    public static final Coin MIN_ANALYSIS_NONDUST_OUTPUT = Transaction.MIN_NONDUST_OUTPUT;
 
     protected final Transaction tx;
     protected final List<Transaction> dependencies;
@@ -164,7 +173,9 @@ public class DefaultRiskAnalysis implements RiskAnalysis {
      * Checks the output to see if the script violates a standardness rule. Not complete.
      */
     public static RuleViolation isOutputStandard(TransactionOutput output) {
-        if (output.isDust())
+        // OP_RETURN has usually output value zero, so we exclude that from the MIN_ANALYSIS_NONDUST_OUTPUT check
+        if (!output.getScriptPubKey().isOpReturn() 
+                && output.getValue().compareTo(MIN_ANALYSIS_NONDUST_OUTPUT) < 0)
             return RuleViolation.DUST;
         for (ScriptChunk chunk : output.getScriptPubKey().getChunks()) {
             if (chunk.isPushData() && !chunk.isShortestPossiblePushData())
@@ -200,7 +211,7 @@ public class DefaultRiskAnalysis implements RiskAnalysis {
     private Result analyzeIsStandard() {
         // The IsStandard rules don't apply on testnet, because they're just a safety mechanism and we don't want to
         // crush innovation with valueless test coins.
-        if (wallet != null && wallet.network() != BitcoinNetwork.MAINNET)
+        if (wallet != null && !wallet.getNetworkParameters().getId().equals(NetworkParameters.ID_MAINNET))
             return Result.OK;
 
         RuleViolation ruleViolation = isStandard(tx);

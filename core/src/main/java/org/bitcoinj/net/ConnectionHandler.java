@@ -17,15 +17,15 @@
 package org.bitcoinj.net;
 
 import com.google.common.base.Throwables;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import org.bitcoinj.core.Message;
-import org.bitcoinj.utils.ListenableCompletableFuture;
 import org.bitcoinj.utils.Threading;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 import java.io.IOException;
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
@@ -47,15 +47,15 @@ import static com.google.common.base.Preconditions.checkState;
  */
 class ConnectionHandler implements MessageWriteTarget {
     private static final org.slf4j.Logger log = LoggerFactory.getLogger(ConnectionHandler.class);
-    // We lock when touching local flags and when writing data, but NEVER when calling any methods which leave this
-    // class into non-Java classes.
-    private final ReentrantLock lock = Threading.lock(ConnectionHandler.class);
 
     private static final int BUFFER_SIZE_LOWER_BOUND = 4096;
     private static final int BUFFER_SIZE_UPPER_BOUND = 65536;
 
     private static final int OUTBOUND_BUFFER_BYTE_COUNT = Message.MAX_SIZE + 24; // 24 byte message header
 
+    // We lock when touching local flags and when writing data, but NEVER when calling any methods which leave this
+    // class into non-Java classes.
+    private final ReentrantLock lock = Threading.lock("nioConnectionHandler");
     @GuardedBy("lock") private final ByteBuffer readBuff;
     @GuardedBy("lock") private final SocketChannel channel;
     @GuardedBy("lock") private final SelectionKey key;
@@ -67,9 +67,9 @@ class ConnectionHandler implements MessageWriteTarget {
 
     private static class BytesAndFuture {
         public final ByteBuffer bytes;
-        public final ListenableCompletableFuture<Void> future;
+        public final SettableFuture future;
 
-        public BytesAndFuture(ByteBuffer bytes, ListenableCompletableFuture<Void> future) {
+        public BytesAndFuture(ByteBuffer bytes, SettableFuture future) {
             this.bytes = bytes;
             this.future = future;
         }
@@ -131,7 +131,7 @@ class ConnectionHandler implements MessageWriteTarget {
                 bytesToWriteRemaining -= channel.write(bytesAndFuture.bytes);
                 if (!bytesAndFuture.bytes.hasRemaining()) {
                     iterator.remove();
-                    bytesAndFuture.future.complete(null);
+                    bytesAndFuture.future.set(null);
                 } else {
                     setWriteOps();
                     break;
@@ -147,7 +147,7 @@ class ConnectionHandler implements MessageWriteTarget {
     }
 
     @Override
-    public ListenableCompletableFuture<Void> writeBytes(byte[] message) throws IOException {
+    public ListenableFuture writeBytes(byte[] message) throws IOException {
         boolean andUnlock = true;
         lock.lock();
         try {
@@ -160,7 +160,7 @@ class ConnectionHandler implements MessageWriteTarget {
                 throw new IOException("Outbound buffer overflowed");
             // Just dump the message onto the write buffer and call tryWriteBytes
             // TODO: Kill the needless message duplication when the write completes right away
-            final ListenableCompletableFuture<Void> future = new ListenableCompletableFuture<>();
+            final SettableFuture<Object> future = SettableFuture.create();
             bytesToWrite.offer(new BytesAndFuture(ByteBuffer.wrap(Arrays.copyOf(message, message.length)), future));
             bytesToWriteRemaining += message.length;
             setWriteOps();
@@ -233,7 +233,7 @@ class ConnectionHandler implements MessageWriteTarget {
                     return;
                 }
                 // "flip" the buffer - setting the limit to the current position and setting position to 0
-                ((Buffer) handler.readBuff).flip();
+                handler.readBuff.flip();
                 // Use connection.receiveBytes's return value as a check that it stopped reading at the right location
                 int bytesConsumed = checkNotNull(handler.connection).receiveBytes(handler.readBuff);
                 checkState(handler.readBuff.position() == bytesConsumed);

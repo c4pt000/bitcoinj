@@ -17,15 +17,12 @@
 
 package org.bitcoinj.crypto;
 
-import com.google.common.annotations.VisibleForTesting;
+import org.bitcoinj.core.*;
+import org.bitcoinj.script.Script;
+
 import com.google.common.base.MoreObjects;
-import org.bitcoinj.base.ScriptType;
-import org.bitcoinj.base.utils.ByteUtils;
-import org.bitcoinj.base.Base58;
-import org.bitcoinj.core.ECKey;
-import org.bitcoinj.core.NetworkParameters;
-import org.bitcoinj.base.Sha256Hash;
-import org.bitcoinj.core.Utils;
+import com.google.common.base.Objects;
+import com.google.common.collect.ImmutableList;
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.math.ec.ECPoint;
 
@@ -34,13 +31,9 @@ import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.List;
-import java.util.Objects;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
-import static org.bitcoinj.base.utils.ByteUtils.HEX;
+import static org.bitcoinj.core.Utils.HEX;
+import static com.google.common.base.Preconditions.*;
 
 /**
  * A deterministic key is a node in a {@link DeterministicHierarchy}. As per
@@ -51,14 +44,17 @@ import static org.bitcoinj.base.utils.ByteUtils.HEX;
 public class DeterministicKey extends ECKey {
 
     /** Sorts deterministic keys in the order of their child number. That's <i>usually</i> the order used to derive them. */
-    public static final Comparator<ECKey> CHILDNUM_ORDER = (k1, k2) -> {
-        ChildNumber cn1 = ((DeterministicKey) k1).getChildNumber();
-        ChildNumber cn2 = ((DeterministicKey) k2).getChildNumber();
-        return cn1.compareTo(cn2);
+    public static final Comparator<ECKey> CHILDNUM_ORDER = new Comparator<ECKey>() {
+        @Override
+        public int compare(ECKey k1, ECKey k2) {
+            ChildNumber cn1 = ((DeterministicKey) k1).getChildNumber();
+            ChildNumber cn2 = ((DeterministicKey) k2).getChildNumber();
+            return cn1.compareTo(cn2);
+        }
     };
 
     private final DeterministicKey parent;
-    private final HDPath childNumberPath;
+    private final ImmutableList<ChildNumber> childNumberPath;
     private final int depth;
     private int parentFingerprint; // 0 if this key is root node of key hierarchy
 
@@ -66,45 +62,44 @@ public class DeterministicKey extends ECKey {
     private final byte[] chainCode;
 
     /** Constructs a key from its components. This is not normally something you should use. */
-    public DeterministicKey(List<ChildNumber> childNumberPath,
+    public DeterministicKey(ImmutableList<ChildNumber> childNumberPath,
                             byte[] chainCode,
                             LazyECPoint publicAsPoint,
                             @Nullable BigInteger priv,
                             @Nullable DeterministicKey parent) {
-        super(priv, publicAsPoint.compress());
+        super(priv, compressPoint(checkNotNull(publicAsPoint)));
         checkArgument(chainCode.length == 32);
         this.parent = parent;
-        this.childNumberPath = HDPath.M(checkNotNull(childNumberPath));
+        this.childNumberPath = checkNotNull(childNumberPath);
         this.chainCode = Arrays.copyOf(chainCode, chainCode.length);
         this.depth = parent == null ? 0 : parent.depth + 1;
         this.parentFingerprint = (parent != null) ? parent.getFingerprint() : 0;
     }
 
-    public DeterministicKey(List<ChildNumber> childNumberPath,
+    public DeterministicKey(ImmutableList<ChildNumber> childNumberPath,
                             byte[] chainCode,
                             ECPoint publicAsPoint,
-                            boolean compressed,
                             @Nullable BigInteger priv,
                             @Nullable DeterministicKey parent) {
-        this(childNumberPath, chainCode, new LazyECPoint(publicAsPoint, compressed), priv, parent);
+        this(childNumberPath, chainCode, new LazyECPoint(publicAsPoint), priv, parent);
     }
 
     /** Constructs a key from its components. This is not normally something you should use. */
-    public DeterministicKey(HDPath hdPath,
+    public DeterministicKey(ImmutableList<ChildNumber> childNumberPath,
                             byte[] chainCode,
                             BigInteger priv,
                             @Nullable DeterministicKey parent) {
-        super(priv, ECKey.publicPointFromPrivate(priv), true);
+        super(priv, compressPoint(ECKey.publicPointFromPrivate(priv)));
         checkArgument(chainCode.length == 32);
         this.parent = parent;
-        this.childNumberPath = checkNotNull(hdPath);
+        this.childNumberPath = checkNotNull(childNumberPath);
         this.chainCode = Arrays.copyOf(chainCode, chainCode.length);
         this.depth = parent == null ? 0 : parent.depth + 1;
         this.parentFingerprint = (parent != null) ? parent.getFingerprint() : 0;
     }
 
     /** Constructs a key from its components. This is not normally something you should use. */
-    public DeterministicKey(List<ChildNumber> childNumberPath,
+    public DeterministicKey(ImmutableList<ChildNumber> childNumberPath,
                             byte[] chainCode,
                             KeyCrypter crypter,
                             LazyECPoint pub,
@@ -136,16 +131,16 @@ public class DeterministicKey extends ECKey {
      * information about its parent key.  Invoked when deserializing, but otherwise not something that
      * you normally should use.
      */
-    public DeterministicKey(List<ChildNumber> childNumberPath,
+    public DeterministicKey(ImmutableList<ChildNumber> childNumberPath,
                             byte[] chainCode,
                             LazyECPoint publicAsPoint,
                             @Nullable DeterministicKey parent,
                             int depth,
                             int parentFingerprint) {
-        super(null, publicAsPoint.compress());
+        super(null, compressPoint(checkNotNull(publicAsPoint)));
         checkArgument(chainCode.length == 32);
         this.parent = parent;
-        this.childNumberPath = HDPath.M(checkNotNull(childNumberPath));
+        this.childNumberPath = checkNotNull(childNumberPath);
         this.chainCode = Arrays.copyOf(chainCode, chainCode.length);
         this.depth = depth;
         this.parentFingerprint = ascertainParentFingerprint(parent, parentFingerprint);
@@ -156,16 +151,16 @@ public class DeterministicKey extends ECKey {
      * information about its parent key.  Invoked when deserializing, but otherwise not something that
      * you normally should use.
      */
-    public DeterministicKey(List<ChildNumber> childNumberPath,
+    public DeterministicKey(ImmutableList<ChildNumber> childNumberPath,
                             byte[] chainCode,
                             BigInteger priv,
                             @Nullable DeterministicKey parent,
                             int depth,
                             int parentFingerprint) {
-        super(priv, ECKey.publicPointFromPrivate(priv), true);
+        super(priv, compressPoint(ECKey.publicPointFromPrivate(priv)));
         checkArgument(chainCode.length == 32);
         this.parent = parent;
-        this.childNumberPath = HDPath.M(checkNotNull(childNumberPath));
+        this.childNumberPath = checkNotNull(childNumberPath);
         this.chainCode = Arrays.copyOf(chainCode, chainCode.length);
         this.depth = depth;
         this.parentFingerprint = ascertainParentFingerprint(parent, parentFingerprint);
@@ -174,7 +169,7 @@ public class DeterministicKey extends ECKey {
     
     /** Clones the key */
     public DeterministicKey(DeterministicKey keyToClone, DeterministicKey newParent) {
-        super(keyToClone.priv, keyToClone.pub.get(), keyToClone.pub.isCompressed());
+        super(keyToClone.priv, keyToClone.pub.get());
         this.parent = newParent;
         this.childNumberPath = keyToClone.childNumberPath;
         this.chainCode = keyToClone.chainCode;
@@ -188,15 +183,15 @@ public class DeterministicKey extends ECKey {
      * A path can be written as 0/1/0 which means the first child of the root, the second child of that node, then
      * the first child of that node.
      */
-    public HDPath getPath() {
+    public ImmutableList<ChildNumber> getPath() {
         return childNumberPath;
     }
 
     /**
-     * Returns the path of this key as a human readable string starting with M or m to indicate the master key.
+     * Returns the path of this key as a human readable string starting with M to indicate the master key.
      */
     public String getPathAsString() {
-        return getPath().toString();
+        return HDUtils.formatPath(getPath());
     }
 
     /**
@@ -401,7 +396,7 @@ public class DeterministicKey extends ECKey {
             if (decryptedKey.length != 32)
                 throw new KeyCrypterException.InvalidCipherText(
                         "Decrypted key must be 32 bytes long, but is " + decryptedKey.length);
-            return ByteUtils.bytesToBigInteger(decryptedKey);
+            return new BigInteger(1, decryptedKey);
         }
         // Otherwise we don't have it, but maybe we can figure it out from our parents. Walk up the tree looking for
         // the first key that has some encrypted private key data.
@@ -438,10 +433,10 @@ public class DeterministicKey extends ECKey {
 
     private BigInteger derivePrivateKeyDownwards(DeterministicKey cursor, byte[] parentalPrivateKeyBytes) {
         DeterministicKey downCursor = new DeterministicKey(cursor.childNumberPath, cursor.chainCode,
-                cursor.pub, ByteUtils.bytesToBigInteger(parentalPrivateKeyBytes), cursor.parent);
+                cursor.pub, new BigInteger(1, parentalPrivateKeyBytes), cursor.parent);
         // Now we have to rederive the keys along the path back to ourselves. That path can be found by just truncating
         // our path with the length of the parents path.
-        List<ChildNumber> path = childNumberPath.subList(cursor.getPath().size(), childNumberPath.size());
+        ImmutableList<ChildNumber> path = childNumberPath.subList(cursor.getPath().size(), childNumberPath.size());
         for (ChildNumber num : path) {
             downCursor = HDKeyDerivation.deriveChildKey(downCursor, num);
         }
@@ -474,17 +469,21 @@ public class DeterministicKey extends ECKey {
         return key;
     }
 
-    @VisibleForTesting
-    byte[] serialize(NetworkParameters params, boolean pub) {
-        return serialize(params, pub, ScriptType.P2PKH);
+    @Deprecated
+    public byte[] serializePublic(NetworkParameters params) {
+        return serialize(params, true, Script.ScriptType.P2PKH);
     }
 
-    // TODO: remove outputScriptType parameter and merge with the two-param serialize() method. When deprecated serializePubB58/serializePrivB58 methods are removed.
-    private byte[] serialize(NetworkParameters params, boolean pub, ScriptType outputScriptType) {
+    @Deprecated
+    public byte[] serializePrivate(NetworkParameters params) {
+        return serialize(params, false, Script.ScriptType.P2PKH);
+    }
+
+    private byte[] serialize(NetworkParameters params, boolean pub, Script.ScriptType outputScriptType) {
         ByteBuffer ser = ByteBuffer.allocate(78);
-        if (outputScriptType == ScriptType.P2PKH)
+        if (outputScriptType == Script.ScriptType.P2PKH)
             ser.putInt(pub ? params.getBip32HeaderP2PKHpub() : params.getBip32HeaderP2PKHpriv());
-        else if (outputScriptType == ScriptType.P2WPKH)
+        else if (outputScriptType == Script.ScriptType.P2WPKH)
             ser.putInt(pub ? params.getBip32HeaderP2WPKHpub() : params.getBip32HeaderP2WPKHpriv());
         else
             throw new IllegalStateException(outputScriptType.toString());
@@ -497,52 +496,20 @@ public class DeterministicKey extends ECKey {
         return ser.array();
     }
 
-    /**
-     * Serialize public key to Base58
-     * <p>
-     * outputScriptType should not be used in generating "xpub" format. (and "ypub", "zpub", etc. should not be used)
-     * @param params Network parameters indicating which network to serialize key for
-     * @param outputScriptType output script type
-     * @return the key serialized as a Base58 address
-     * @see <a href="https://bitcoin.stackexchange.com/questions/89261/why-does-importmulti-not-support-zpub-and-ypub/89281#89281">Why does importmulti not support zpub and ypub?</a>
-     * @deprecated Use a {@link #serializePubB58(NetworkParameters)} or a descriptor if you need output type information
-     */
-    @Deprecated
-    public String serializePubB58(NetworkParameters params, ScriptType outputScriptType) {
+    public String serializePubB58(NetworkParameters params, Script.ScriptType outputScriptType) {
         return toBase58(serialize(params, true, outputScriptType));
     }
 
-    /**
-     * Serialize public key to Base58
-     * <p>
-     * outputScriptType should not be used in generating "xprv" format. (and "zprv", "vprv", etc. should not be used)
-     * @param params Network parameters indicating which network to serialize key for
-     * @param outputScriptType output script type
-     * @return the key serialized as a Base58 address
-     * @see <a href="https://bitcoin.stackexchange.com/questions/89261/why-does-importmulti-not-support-zpub-and-ypub/89281#89281">Why does importmulti not support zpub and ypub?</a>
-     * @deprecated Use a {@link #serializePrivB58(NetworkParameters)} or a descriptor if you need output type information
-     */
-    @Deprecated
-    public String serializePrivB58(NetworkParameters params, ScriptType outputScriptType) {
+    public String serializePrivB58(NetworkParameters params, Script.ScriptType outputScriptType) {
         return toBase58(serialize(params, false, outputScriptType));
     }
 
-    /**
-     * Serialize public key to Base58 (either "xpub" or "tpub")
-     * @param params Network parameters indicating which network to serialize key for
-     * @return the key serialized as a Base58 address
-     */
     public String serializePubB58(NetworkParameters params) {
-        return toBase58(serialize(params, true));
+        return serializePubB58(params, Script.ScriptType.P2PKH);
     }
 
-    /**
-     * Serialize private key to Base58 (either "xprv" or "tprv")
-     * @param params Network parameters indicating which network to serialize key for
-     * @return the key serialized as a Base58 address
-     */
     public String serializePrivB58(NetworkParameters params) {
-        return toBase58(serialize(params, false));
+        return serializePrivB58(params, Script.ScriptType.P2PKH);
     }
 
     static String toBase58(byte[] ser) {
@@ -585,13 +552,13 @@ public class DeterministicKey extends ECKey {
         final int parentFingerprint = buffer.getInt();
         final int i = buffer.getInt();
         final ChildNumber childNumber = new ChildNumber(i);
-        HDPath path;
+        ImmutableList<ChildNumber> path;
         if (parent != null) {
             if (parentFingerprint == 0)
                 throw new IllegalArgumentException("Parent was provided but this key doesn't have one");
             if (parent.getFingerprint() != parentFingerprint)
                 throw new IllegalArgumentException("Parent fingerprints don't match");
-            path = parent.getPath().extend(childNumber);
+            path = HDUtils.append(parent.getPath(), childNumber);
             if (path.size() != depth)
                 throw new IllegalArgumentException("Depth does not match");
         } else {
@@ -600,8 +567,8 @@ public class DeterministicKey extends ECKey {
                 // This can happen when deserializing an account key for a watching wallet.  In this case, we assume that
                 // the client wants to conceal the key's position in the hierarchy.  The path is truncated at the
                 // parent's node.
-                path = HDPath.M(childNumber);
-            else path = HDPath.M();
+                path = ImmutableList.of(childNumber);
+            else path = ImmutableList.of();
         }
         byte[] chainCode = new byte[32];
         buffer.get(chainCode);
@@ -611,7 +578,7 @@ public class DeterministicKey extends ECKey {
         if (pub) {
             return new DeterministicKey(path, chainCode, new LazyECPoint(ECKey.CURVE.getCurve(), data), parent, depth, parentFingerprint);
         } else {
-            return new DeterministicKey(path, chainCode, ByteUtils.bytesToBigInteger(data), parent, depth, parentFingerprint);
+            return new DeterministicKey(path, chainCode, new BigInteger(1, data), parent, depth, parentFingerprint);
         }
     }
 
@@ -650,24 +617,22 @@ public class DeterministicKey extends ECKey {
         DeterministicKey other = (DeterministicKey) o;
         return super.equals(other)
                 && Arrays.equals(this.chainCode, other.chainCode)
-                && Objects.equals(this.childNumberPath, other.childNumberPath);
+                && Objects.equal(this.childNumberPath, other.childNumberPath);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), Arrays.hashCode(chainCode), childNumberPath);
+        return Objects.hashCode(super.hashCode(), Arrays.hashCode(chainCode), childNumberPath);
     }
 
     @Override
     public String toString() {
         final MoreObjects.ToStringHelper helper = MoreObjects.toStringHelper(this).omitNullValues();
-        helper.add("pub", ByteUtils.HEX.encode(pub.getEncoded()));
+        helper.add("pub", Utils.HEX.encode(pub.getEncoded()));
         helper.add("chainCode", HEX.encode(chainCode));
         helper.add("path", getPathAsString());
-        if (parent != null)
-            helper.add("creationTimeSeconds", getCreationTimeSeconds() + " (inherited)");
-        else
-            helper.add("creationTimeSeconds", getCreationTimeSeconds());
+        if (creationTimeSeconds > 0)
+            helper.add("creationTimeSeconds", creationTimeSeconds);
         helper.add("isEncrypted", isEncrypted());
         helper.add("isPubKeyOnly", isPubKeyOnly());
         return helper.toString();
@@ -675,9 +640,9 @@ public class DeterministicKey extends ECKey {
 
     @Override
     public void formatKeyWithAddress(boolean includePrivateKeys, @Nullable KeyParameter aesKey, StringBuilder builder,
-                                     NetworkParameters params, ScriptType outputScriptType, @Nullable String comment) {
-        builder.append("  addr:").append(toAddress(outputScriptType, params.network()).toString());
-        builder.append("  hash160:").append(ByteUtils.HEX.encode(getPubKeyHash()));
+            NetworkParameters params, Script.ScriptType outputScriptType, @Nullable String comment) {
+        builder.append("  addr:").append(Address.fromKey(params, this, outputScriptType).toString());
+        builder.append("  hash160:").append(Utils.HEX.encode(getPubKeyHash()));
         builder.append("  (").append(getPathAsString());
         if (comment != null)
             builder.append(", ").append(comment);

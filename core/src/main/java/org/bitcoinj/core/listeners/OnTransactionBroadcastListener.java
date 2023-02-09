@@ -16,8 +16,7 @@
 
 package org.bitcoinj.core.listeners;
 
-import org.bitcoinj.core.Peer;
-import org.bitcoinj.core.Transaction;
+import org.bitcoinj.core.*;
 
 /**
  * Called when a new transaction is broadcast over the network.

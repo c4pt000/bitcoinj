@@ -16,33 +16,19 @@
 
 package org.bitcoinj.store;
 
-import org.bitcoinj.core.Block;
-import org.bitcoinj.core.NetworkParameters;
-import org.bitcoinj.core.ProtocolException;
-import org.bitcoinj.base.Sha256Hash;
-import org.bitcoinj.core.StoredBlock;
-import org.bitcoinj.utils.Threading;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.bitcoinj.core.*;
+import org.bitcoinj.utils.*;
+import org.slf4j.*;
 
-import javax.annotation.Nullable;
-import java.io.File;
-import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.nio.Buffer;
-import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
+import javax.annotation.*;
+import java.io.*;
+import java.nio.*;
+import java.nio.channels.*;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.*;
+import java.util.concurrent.locks.*;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.base.Preconditions.*;
 
 // TODO: Lose the mmap in this class. There are too many platform bugs that require odd workarounds.
 
@@ -53,14 +39,15 @@ import static com.google.common.base.Preconditions.checkState;
  */
 public class SPVBlockStore implements BlockStore {
     private static final Logger log = LoggerFactory.getLogger(SPVBlockStore.class);
-    protected final ReentrantLock lock = Threading.lock(SPVBlockStore.class);
 
     /** The default number of headers that will be stored in the ring buffer. */
-    public static final int DEFAULT_CAPACITY = 10000;
+    public static final int DEFAULT_CAPACITY = 5000;
     public static final String HEADER_MAGIC = "SPVB";
 
     protected volatile MappedByteBuffer buffer;
     protected final NetworkParameters params;
+
+    protected ReentrantLock lock = Threading.lock("SPVBlockStore");
 
     // The entire ring-buffer is mmapped and accessing it should be as fast as accessing regular memory once it's
     // faulted in. Unfortunately, in theory practice and theory are the same. In practice they aren't.
@@ -92,6 +79,7 @@ public class SPVBlockStore implements BlockStore {
     protected FileLock fileLock = null;
     protected RandomAccessFile randomAccessFile = null;
     private int fileLength;
+    private final String fileAbsolutePath;
 
     /**
      * Creates and initializes an SPV block store that can hold {@link #DEFAULT_CAPACITY} block headers. Will create the
@@ -113,6 +101,7 @@ public class SPVBlockStore implements BlockStore {
      */
     public SPVBlockStore(NetworkParameters params, File file, int capacity, boolean grow) throws BlockStoreException {
         checkNotNull(file);
+        fileAbsolutePath = file.getAbsolutePath();
         this.params = checkNotNull(params);
         checkArgument(capacity > 0);
         try {
@@ -173,7 +162,7 @@ public class SPVBlockStore implements BlockStore {
 
     private void initNewStore(NetworkParameters params) throws Exception {
         byte[] header;
-        header = HEADER_MAGIC.getBytes(StandardCharsets.US_ASCII);
+        header = HEADER_MAGIC.getBytes("US-ASCII");
         buffer.put(header);
         // Insert the genesis block.
         lock.lock();
@@ -189,7 +178,7 @@ public class SPVBlockStore implements BlockStore {
     }
 
     /** Returns the size in bytes of the file that is used to store the chain with the current parameters. */
-    public static int getFileSize(int capacity) {
+    public static final int getFileSize(int capacity) {
         return RECORD_SIZE * capacity + FILE_PROLOGUE_BYTES /* extra kilobyte for stuff */;
     }
 
@@ -205,7 +194,7 @@ public class SPVBlockStore implements BlockStore {
                 // Wrapped around.
                 cursor = FILE_PROLOGUE_BYTES;
             }
-            ((Buffer) buffer).position(cursor);
+            buffer.position(cursor);
             Sha256Hash hash = block.getHeader().getHash();
             notFoundCache.remove(hash);
             buffer.put(hash.getBytes());
@@ -242,7 +231,7 @@ public class SPVBlockStore implements BlockStore {
                     cursor = fileLength - RECORD_SIZE;
                 }
                 // Cursor is now at the start of the next record to check, so read the hash and compare it.
-                ((Buffer) buffer).position(cursor);
+                buffer.position(cursor);
                 buffer.get(scratch);
                 if (Arrays.equals(scratch, targetHashBytes)) {
                     // Found the target.
@@ -270,12 +259,13 @@ public class SPVBlockStore implements BlockStore {
         try {
             if (lastChainHead == null) {
                 byte[] headHash = new byte[32];
-                ((Buffer) buffer).position(8);
+                buffer.position(8);
                 buffer.get(headHash);
                 Sha256Hash hash = Sha256Hash.wrap(headHash);
                 StoredBlock block = get(hash);
-                if (block == null)
-                    throw new BlockStoreException("Corrupted block store: could not find chain head: " + hash);
+                if (block == null) 
+                    throw new BlockStoreException("Corrupted block store: could not find chain head: " + hash 
+                                                          +"\nFile path: "+ fileAbsolutePath);
                 lastChainHead = block;
             }
             return lastChainHead;
@@ -291,7 +281,7 @@ public class SPVBlockStore implements BlockStore {
         try {
             lastChainHead = chainHead;
             byte[] headHash = chainHead.getHeader().getHash().getBytes();
-            ((Buffer) buffer).position(8);
+            buffer.position(8);
             buffer.put(headHash);
         } finally { lock.unlock(); }
     }
@@ -301,7 +291,6 @@ public class SPVBlockStore implements BlockStore {
         try {
             buffer.force();
             buffer = null;  // Allow it to be GCd and the underlying file mapping to go away.
-            fileLock.release();
             randomAccessFile.close();
             blockCache.clear();
         } catch (IOException e) {
@@ -347,13 +336,13 @@ public class SPVBlockStore implements BlockStore {
             blockCache.clear();
             notFoundCache.clear();
             // Clear file content
-            ((Buffer) buffer).position(0);
+            buffer.position(0);
             long fileLength = randomAccessFile.length();
             for (int i = 0; i < fileLength; i++) {
                 buffer.put((byte)0);
             }
             // Initialize store again
-            ((Buffer) buffer).position(0);
+            buffer.position(0);
             initNewStore(params);
         } finally { lock.unlock(); }
     }
