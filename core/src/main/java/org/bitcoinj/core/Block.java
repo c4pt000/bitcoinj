@@ -118,9 +118,7 @@ public class Block extends Message {
         super(params);
         // Set up a few basic things. We are not complete after this though.
         version = setVersion;
-       // difficultyTarget = 0x1d07fff8L;
-          difficultyTarget = 0x00000000L;
-
+        difficultyTarget = 0x1d07fff8L;
         time = Utils.currentTimeSeconds();
         prevBlockHash = Sha256Hash.ZERO_HASH;
 
@@ -238,8 +236,9 @@ public class Block extends Message {
             return;
         }
 
-        int numTransactions = (int) readVarInt();
-        optimalEncodingMessageSize += VarInt.sizeOf(numTransactions);
+        VarInt numTransactionsVarInt = readVarInt();
+        optimalEncodingMessageSize += numTransactionsVarInt.getSizeInBytes();
+        int numTransactions = numTransactionsVarInt.intValue();
         transactions = new ArrayList<>(Math.min(numTransactions, Utils.MAX_INITIAL_ARRAY_LENGTH));
         for (int i = 0; i < numTransactions; i++) {
             Transaction tx = new Transaction(params, payload, cursor, this, serializer, UNKNOWN_LENGTH, null);
@@ -527,20 +526,15 @@ public class Block extends Message {
      * target is represented using a compact form. If this form decodes to a value that is out of bounds, an exception
      * is thrown.
      */
-    
-    //mod here
-    // <= 0 or > 0 here inverse
     public BigInteger getDifficultyTargetAsInteger() throws VerificationException {
         BigInteger target = Utils.decodeCompactBits(difficultyTarget);
         if (target.signum() <= 0 || target.compareTo(params.maxTarget) > 0)
-          System.out.println("this would have thrown an exception for the difficulty target being invalid");
-            // throw new VerificationException("Difficulty target is bad: " + target.toString());
+            throw new VerificationException("Difficulty target is bad: " + target.toString());
         return target;
     }
 
     /** Returns true if the hash of the block is OK (lower than difficulty target). */
- 
- protected boolean checkProofOfWork(boolean throwException) throws VerificationException {
+    protected boolean checkProofOfWork(boolean throwException) throws VerificationException {
         // This part is key - it is what proves the block was as difficult to make as it claims
         // to be. Note however that in the context of this function, the block can claim to be
         // as difficult as it wants to be .... if somebody was able to take control of our network
@@ -552,23 +546,15 @@ public class Block extends Message {
         BigInteger target = getDifficultyTargetAsInteger();
 
         BigInteger h = getHash().toBigInteger();
-     // should never arrive at this point since less than 0 not greater than 0
-   
-      
-       if (h.compareTo(target) < 0) {
+        if (h.compareTo(target) > 0) {
             // Proof of work check failed!
             if (throwException)
-               throw new VerificationException("Hash is higher than target: " + getHashAsString() + " vs "
-                       + target.toString(16));
+                throw new VerificationException("Hash is higher than target: " + getHashAsString() + " vs "
+                        + target.toString(16));
             else
                 return false;
         }
-     
-  
-     
-      return true;
-
-     
+        return true;
     }
 
     private void checkTimestamp() throws VerificationException {
