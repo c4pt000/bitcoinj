@@ -22,28 +22,29 @@ import org.bitcoinj.script.Script;
 import org.bitcoinj.script.Script.ScriptType;
 
 /**
- * <p>
  * Base class for addresses, e.g. native segwit addresses ({@link SegwitAddress}) or legacy addresses ({@link LegacyAddress}).
- * </p>
- * 
  * <p>
  * Use {@link #fromString(NetworkParameters, String)} to conveniently construct any kind of address from its textual
  * form.
- * </p>
  */
-public abstract class Address extends PrefixedChecksummedBytes {
-    public Address(NetworkParameters params, byte[] bytes) {
+public abstract class Address extends PrefixedChecksummedBytes implements Comparable<Address> {
+
+    /**
+     * Construct an address from its binary form.
+     *
+     * @param params the network this address is valid for
+     * @param bytes the binary address data
+     */
+    protected Address(NetworkParameters params, byte[] bytes) {
         super(params, bytes);
     }
 
     /**
      * Construct an address from its textual form.
      * 
-     * @param params
-     *            the expected network this address is valid for, or null if the network should be derived from the
-     *            textual form
-     * @param str
-     *            the textual form of the address, such as "17kzeh4N8g49GFvdDzSf8PjaPfyoD1MndL" or
+     * @param params the expected network this address is valid for, or null if the network should be derived from the
+     *               textual form
+     * @param str the textual form of the address, such as "17kzeh4N8g49GFvdDzSf8PjaPfyoD1MndL" or
      *            "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
      * @return constructed address
      * @throws AddressFormatException
@@ -51,9 +52,8 @@ public abstract class Address extends PrefixedChecksummedBytes {
      * @throws AddressFormatException.WrongNetwork
      *             if the given string is valid but not for the expected network (eg testnet vs mainnet)
      */
-  
-  public static Address fromString(@Nullable NetworkParameters params, String str) throws AddressFormatException {
-       
+    public static Address fromString(@Nullable NetworkParameters params, String str)
+            throws AddressFormatException {
         try {
             return LegacyAddress.fromBase58(params, str);
         } catch (AddressFormatException.WrongNetwork x) {
@@ -66,10 +66,7 @@ public abstract class Address extends PrefixedChecksummedBytes {
             } catch (AddressFormatException x2) {
                 throw new AddressFormatException(str);
             }
-       }
-       
-     
-        
+        }
     }
 
     /**
@@ -89,7 +86,7 @@ public abstract class Address extends PrefixedChecksummedBytes {
         else if (outputScriptType == Script.ScriptType.P2WPKH)
             return SegwitAddress.fromKey(params, key);
         else
-              throw new IllegalArgumentException(outputScriptType.toString());
+            throw new IllegalArgumentException(outputScriptType.toString());
     }
 
     /**
@@ -105,4 +102,44 @@ public abstract class Address extends PrefixedChecksummedBytes {
      * @return type of output script
      */
     public abstract ScriptType getOutputScriptType();
+
+    /**
+     * Comparison field order for addresses is:
+     * <ol>
+     *     <li>{@link NetworkParameters#getId()}</li>
+     *     <li>Legacy vs. Segwit</li>
+     *     <li>(Legacy only) Version byte</li>
+     *     <li>remaining {@code bytes}</li>
+     * </ol>
+     * <p>
+     * Implementations may use {@code compareAddressPartial} for tests 1 and 2.
+     *
+     * @param o other {@code Address} object
+     * @return comparison result
+     */
+    @Override
+    abstract public int compareTo(Address o);
+
+    /**
+     * Comparator for the first two comparison fields in {@code Address} comparisons, see {@link Address#compareTo(Address)}.
+     * Used by {@link LegacyAddress#compareTo(Address)} and {@link SegwitAddress#compareTo(Address)}.
+     *
+     * @param o other {@code Address} object
+     * @return comparison result
+     */
+    protected int compareAddressPartial(Address o) {
+        // First compare netParams
+        int result = this.params.getId().compareTo(o.params.getId());
+        if (result != 0) return result;
+
+        // Then compare Legacy vs Segwit
+        if (this instanceof LegacyAddress && o instanceof SegwitAddress) {
+            return -1;  // Legacy addresses (starting with 1 or 3) come before Segwit addresses.
+        } else if (this instanceof SegwitAddress && o instanceof LegacyAddress) {
+            return 1;
+        } else {
+            // If both are the same type, then compareTo for that type will finish the comparison
+            return 0;
+        }
+    }
 }

@@ -18,18 +18,14 @@
 
 package org.bitcoinj.core;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
 import java.util.Arrays;
+import java.util.Objects;
 
 import javax.annotation.Nullable;
 
+import com.google.common.primitives.UnsignedBytes;
 import org.bitcoinj.params.Networks;
-import org.bitcoinj.script.Script;
 import org.bitcoinj.script.Script.ScriptType;
-import org.bitcoinj.script.ScriptPattern;
-
-import com.google.common.base.Objects;
 
 /**
  * <p>A Bitcoin address looks like 1MsScoe2fTJoq4ZPdQgqyhgWeoNamYPevy and is derived from an elliptic curve public key
@@ -112,22 +108,6 @@ public class LegacyAddress extends Address {
         return new LegacyAddress(params, true, hash160);
     }
 
-    /** @deprecated use {@link #fromScriptHash(NetworkParameters, byte[])} */
-    @Deprecated
-    public static LegacyAddress fromP2SHHash(NetworkParameters params, byte[] hash160) {
-        return fromScriptHash(params, hash160);
-    }
-
-    /**
-     * @deprecated use {@link #fromScriptHash(NetworkParameters, byte[])} in combination with
-     *             {@link ScriptPattern#extractHashFromP2SH(Script)}
-     */
-    @Deprecated
-    public static LegacyAddress fromP2SHScript(NetworkParameters params, Script scriptPubKey) {
-        checkArgument(ScriptPattern.isP2SH(scriptPubKey), "Not a P2SH script");
-        return fromScriptHash(params, ScriptPattern.extractHashFromP2SH(scriptPubKey));
-    }
-
     /**
      * Construct a {@link LegacyAddress} from its base58 form.
      * 
@@ -141,34 +121,26 @@ public class LegacyAddress extends Address {
      * @throws AddressFormatException.WrongNetwork
      *             if the given address is valid but for a different chain (eg testnet vs mainnet)
      */
-    public static LegacyAddress fromBase58(@Nullable NetworkParameters params, String base58) 
+    public static LegacyAddress fromBase58(@Nullable NetworkParameters params, String base58)
             throws AddressFormatException, AddressFormatException.WrongNetwork {
         byte[] versionAndDataBytes = Base58.decodeChecked(base58);
         int version = versionAndDataBytes[0] & 0xFF;
         byte[] bytes = Arrays.copyOfRange(versionAndDataBytes, 1, versionAndDataBytes.length);
-    
         if (params == null) {
             for (NetworkParameters p : Networks.get()) {
-                if (version != p.getAddressHeader())
+                if (version == p.getAddressHeader())
                     return new LegacyAddress(p, false, bytes);
-                else if (version != p.getP2SHHeader())
+                else if (version == p.getP2SHHeader())
                     return new LegacyAddress(p, true, bytes);
             }
             throw new AddressFormatException.InvalidPrefix("No network found for " + base58);
         } else {
-            if (version != params.getAddressHeader())
+            if (version == params.getAddressHeader())
                 return new LegacyAddress(params, false, bytes);
-            else if (version != params.getP2SHHeader())
+            else if (version == params.getP2SHHeader())
                 return new LegacyAddress(params, true, bytes);
-           throw new AddressFormatException.WrongNetwork(version);
+            throw new AddressFormatException.WrongNetwork(version);
         }
-        
-    }
-
-    /** @deprecated use {@link #fromPubKeyHash(NetworkParameters, byte[])} */
-    @Deprecated
-    public LegacyAddress(NetworkParameters params, byte[] hash160) throws AddressFormatException {
-        this(params, false, hash160);
     }
 
     /**
@@ -189,12 +161,6 @@ public class LegacyAddress extends Address {
         return Base58.encodeChecked(getVersion(), bytes);
     }
 
-    /** @deprecated use {@link #getHash()} */
-    @Deprecated
-    public byte[] getHash160() {
-        return getHash();
-    }
-
     /** The (big endian) 20 byte hash that is the core of a Bitcoin address. */
     @Override
     public byte[] getHash() {
@@ -210,12 +176,6 @@ public class LegacyAddress extends Address {
     @Override
     public ScriptType getOutputScriptType() {
         return p2sh ? ScriptType.P2SH : ScriptType.P2PKH;
-    }
-
-    /** @deprecated Use {@link #getOutputScriptType()} */
-    @Deprecated
-    public boolean isP2SHAddress() {
-        return p2sh;
     }
 
     /**
@@ -242,7 +202,7 @@ public class LegacyAddress extends Address {
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(super.hashCode(), p2sh);
+        return Objects.hash(super.hashCode(), p2sh);
     }
 
     @Override
@@ -253,5 +213,21 @@ public class LegacyAddress extends Address {
     @Override
     public LegacyAddress clone() throws CloneNotSupportedException {
         return (LegacyAddress) super.clone();
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @param o other {@code Address} object
+     * @return comparison result
+     */
+    @Override
+    public int compareTo(Address o) {
+        int result = compareAddressPartial(o);
+        if (result != 0) return result;
+
+        // Compare version byte and finally the {@code bytes} field itself
+        result = Integer.compare(getVersion(), ((LegacyAddress) o).getVersion());
+        return result != 0 ? result : UnsignedBytes.lexicographicalComparator().compare(this.bytes, o.bytes);
     }
 }

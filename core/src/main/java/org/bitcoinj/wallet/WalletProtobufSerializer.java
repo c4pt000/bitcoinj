@@ -17,7 +17,6 @@
 
 package org.bitcoinj.wallet;
 
-import com.google.protobuf.Message;
 import org.bitcoinj.core.Coin;
 import org.bitcoinj.core.NetworkParameters;
 import org.bitcoinj.core.PeerAddress;
@@ -37,11 +36,9 @@ import org.bitcoinj.utils.ExchangeRate;
 import org.bitcoinj.utils.Fiat;
 import org.bitcoinj.wallet.Protos.Wallet.EncryptionType;
 
-import com.google.common.collect.Lists;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.CodedInputStream;
 import com.google.protobuf.CodedOutputStream;
-import com.google.protobuf.TextFormat;
 import com.google.protobuf.WireFormat;
 
 import org.slf4j.Logger;
@@ -157,15 +154,14 @@ public class WalletProtobufSerializer {
     }
 
     /**
-     * Returns the given wallet formatted as text. The text format is that used by protocol buffers and although it
-     * can also be parsed using {@link TextFormat#merge(CharSequence, Message.Builder)},
+     * Returns the given wallet formatted as text. The text format is that used by protocol buffers and
      * it is designed more for debugging than storage. It is not well specified and wallets are largely binary data
      * structures anyway, consisting as they do of keys (large random numbers) and {@link Transaction}s which also
      * mostly contain keys and hashes.
      */
     public String walletToText(Wallet wallet) {
         Protos.Wallet walletProto = walletToProto(wallet);
-        return TextFormat.printToString(walletProto);
+        return walletProto.toString();
     }
 
     /**
@@ -260,10 +256,6 @@ public class WalletProtobufSerializer {
 
         if (tx.getUpdateTime() != null) {
             txBuilder.setUpdatedAt(tx.getUpdateTime().getTime());
-        }
-
-        if (tx.getIncludedInBestChainAt() != null) {
-            txBuilder.setIncludedInBestChainAt(tx.getIncludedInBestChainAt().getTime());
         }
 
         if (tx.getLockTime() > 0) {
@@ -363,7 +355,7 @@ public class WalletProtobufSerializer {
                                         TransactionConfidence confidence,
                                         Protos.TransactionConfidence.Builder confidenceBuilder) {
         synchronized (confidence) {
-            confidenceBuilder.setType(Protos.TransactionConfidence.Type.valueOf(confidence.getConfidenceType().getValue()));
+            confidenceBuilder.setType(Protos.TransactionConfidence.Type.forNumber(confidence.getConfidenceType().getValue()));
             if (confidence.getConfidenceType() == ConfidenceType.BUILDING) {
                 confidenceBuilder.setAppearedAtHeight(confidence.getAppearedAtChainHeight());
                 confidenceBuilder.setDepth(confidence.getDepthInBlocks());
@@ -389,10 +381,9 @@ public class WalletProtobufSerializer {
 
         for (PeerAddress address : confidence.getBroadcastBy()) {
             Protos.PeerAddress proto = Protos.PeerAddress.newBuilder()
-                    .setIpAddress(ByteString.copyFrom(address.getAddr() != null ? address.getAddr().getAddress() : new byte[]{}))
+                    .setIpAddress(ByteString.copyFrom(address.getAddr().getAddress()))
                     .setPort(address.getPort())
                     .setServices(address.getServices().longValue())
-                    .setHostname(address.getHostname() != null ? address.getHostname() : "")
                     .build();
             confidenceBuilder.addBroadcastBy(proto);
         }
@@ -504,7 +495,7 @@ public class WalletProtobufSerializer {
         }
         Wallet wallet = factory.create(params, keyChainGroup);
 
-        List<Script> scripts = Lists.newArrayList();
+        List<Script> scripts = new ArrayList<>();
         for (Protos.Script protoScript : walletProto.getWatchedScriptList()) {
             try {
                 Script script =
@@ -630,10 +621,6 @@ public class WalletProtobufSerializer {
 
         if (txProto.hasUpdatedAt()) {
             tx.setUpdateTime(new Date(txProto.getUpdatedAt()));
-        }
-
-        if (txProto.hasIncludedInBestChainAt()) {
-            tx.setIncludedInBestChainAt(new Date(txProto.getIncludedInBestChainAt()));
         }
 
         for (Protos.TransactionOutput outputProto : txProto.getTransactionOutputList()) {
@@ -807,23 +794,15 @@ public class WalletProtobufSerializer {
             confidence.setOverridingTransaction(overridingTransaction);
         }
         for (Protos.PeerAddress proto : confidenceProto.getBroadcastByList()) {
-            InetAddress ip = null;
-            if (proto.getIpAddress().toByteArray().length != 0) {
-                try {
-                    ip = InetAddress.getByAddress(proto.getIpAddress().toByteArray());
-                } catch (UnknownHostException e) {
-                    throw new UnreadableWalletException("Peer IP address does not have the right length", e);
-                }
+            InetAddress ip;
+            try {
+                ip = InetAddress.getByAddress(proto.getIpAddress().toByteArray());
+            } catch (UnknownHostException e) {
+                throw new UnreadableWalletException("Peer IP address does not have the right length", e);
             }
             int port = proto.getPort();
             BigInteger services = BigInteger.valueOf(proto.getServices());
-            String hostname = proto.hasHostname() ? proto.getHostname() : "";
-            PeerAddress address;
-            if (ip != null) {
-                address = new PeerAddress(params, ip, port, services, params.getDefaultSerializer());
-            } else {
-                address = new PeerAddress(params, hostname, port, services);
-            }
+            PeerAddress address = new PeerAddress(params, ip, port, services);
             confidence.markBroadcastBy(address);
         }
         if (confidenceProto.hasLastBroadcastedAt())

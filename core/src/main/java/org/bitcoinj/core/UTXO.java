@@ -18,11 +18,11 @@
 package org.bitcoinj.core;
 
 import org.bitcoinj.script.*;
-import com.google.common.base.Objects;
 
 import java.io.*;
 import java.math.*;
 import java.util.Locale;
+import java.util.Objects;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -128,7 +128,7 @@ public class UTXO {
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(getIndex(), getHash(), getValue());
+        return Objects.hash(getIndex(), getHash(), getValue());
     }
 
     @Override

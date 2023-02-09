@@ -20,7 +20,7 @@ import org.bitcoinj.utils.BtcAutoFormat.Style;
 import static org.bitcoinj.utils.BtcAutoFormat.Style.*;
 
 import org.bitcoinj.core.Coin;
-import com.google.common.base.Objects;
+import java.util.Objects;
 import com.google.common.collect.ImmutableList;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
@@ -500,11 +500,11 @@ public abstract class BtcFormat extends Format {
      */
 
     /** The conventional international currency code for bitcoins: "BTC" */
-    private static final String COIN_CODE = "RADC";
+    private static final String COIN_CODE = "BTC";
     /** The default currency symbols for bitcoins */
-    private static final String COIN_SYMBOL = "R";
+    private static final String COIN_SYMBOL = "฿";
     /** An alternative currency symbol to use in locales where the default symbol is used for the national currency. */
-    protected static final String COIN_SYMBOL_ALT = "R";
+    protected static final String COIN_SYMBOL_ALT = "Ƀ";
 
     protected final DecimalFormat numberFormat; // warning: mutable
     protected final int minimumFractionDigits;
@@ -680,7 +680,7 @@ public abstract class BtcFormat extends Format {
          *  <p>Note that by applying a pattern you override the configured formatting style of
          *  {@link BtcAutoFormat} instances.  */
         public Builder pattern(String val) {
-            if (localizedPattern != "")
+            if (!Strings.isNullOrEmpty(localizedPattern))
                 throw new IllegalStateException("You cannot invoke both pattern() and localizedPattern()");
             pattern = val;
             return this;
@@ -714,7 +714,7 @@ public abstract class BtcFormat extends Format {
          *  <p>Note that by applying a pattern you override the configured formatting style of
          *  {@link BtcAutoFormat} instances.         */
         public Builder localizedPattern(String val) {
-            if (pattern != "")
+            if (!Strings.isNullOrEmpty(pattern))
                 throw new IllegalStateException("You cannot invoke both pattern() and localizedPattern().");
             localizedPattern = val;
             return this;
@@ -724,16 +724,16 @@ public abstract class BtcFormat extends Format {
          *  to the state of this {@code Builder} instance at the time this method is invoked. */
         public BtcFormat build() {
             BtcFormat f = variant.newInstance(this);
-            if (symbol != "" || code != "") { synchronized(f.numberFormat) {
+            if (!Strings.isNullOrEmpty(symbol) || !Strings.isNullOrEmpty(code)) { synchronized(f.numberFormat) {
                 DecimalFormatSymbols defaultSigns = f.numberFormat.getDecimalFormatSymbols();
                 setSymbolAndCode(f.numberFormat,
-                    symbol != "" ? symbol : defaultSigns.getCurrencySymbol(),
-                    code != "" ? code : defaultSigns.getInternationalCurrencySymbol()
+                        !Strings.isNullOrEmpty(symbol) ? symbol : defaultSigns.getCurrencySymbol(),
+                        !Strings.isNullOrEmpty(code) ? code : defaultSigns.getInternationalCurrencySymbol()
                 );
             }}
-            if (localizedPattern != "" || pattern != "") {
+            if (!Strings.isNullOrEmpty(localizedPattern) || !Strings.isNullOrEmpty(pattern)) {
                 int places = f.numberFormat.getMinimumFractionDigits();
-                if (localizedPattern != "") f.numberFormat.applyLocalizedPattern(negify(localizedPattern));
+                if (!Strings.isNullOrEmpty(localizedPattern)) f.numberFormat.applyLocalizedPattern(negify(localizedPattern));
                 else f.numberFormat.applyPattern(negify(pattern));
                 f.numberFormat.setMinimumFractionDigits(places);
                 f.numberFormat.setMaximumFractionDigits(places);
@@ -1588,7 +1588,7 @@ public abstract class BtcFormat extends Format {
      *  @see java.lang.Object#hashCode
      */
     @Override public int hashCode() {
-        return Objects.hashCode(pattern(), symbols(), minimumFractionDigits, decimalGroups);
+        return Objects.hash(pattern(), symbols(), minimumFractionDigits, decimalGroups);
     }
 
 }

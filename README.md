@@ -1,5 +1,4 @@
-[![Github Build Status](https://github.com/bitcoinj/bitcoinj/workflows/Java%20CI/badge.svg)](https://github.com/bitcoinj/bitcoinj/actions)
-[![Travis Build Status](https://travis-ci.org/bitcoinj/bitcoinj.png?branch=master)](https://travis-ci.org/bitcoinj/bitcoinj)
+[![GitHub Build Status](https://github.com/bitcoinj/bitcoinj/workflows/Java%20CI/badge.svg)](https://github.com/bitcoinj/bitcoinj/actions)
 [![GitLab Build Status](https://gitlab.com/bitcoinj/bitcoinj/badges/master/pipeline.svg)](https://gitlab.com/bitcoinj/bitcoinj/pipelines)
 [![Coverage Status](https://coveralls.io/repos/bitcoinj/bitcoinj/badge.png?branch=master)](https://coveralls.io/r/bitcoinj/bitcoinj?branch=master)
 
@@ -11,13 +10,11 @@ The bitcoinj library is a Java implementation of the Bitcoin protocol, which all
 
 ### Technologies
 
-* Java 7+ and Gradle 4.4+ for the `core` module
-* Java 8+ and Gradle 4.4 - Gradle 6.9 for `tools` and `examples`
-* Java 11+ and Gradle 4.10 - Gradle 6.9 for the JavaFX-based `wallettemplate`
+* Java 8+ (needs Java 8 API or Android 6.0 API, compiles to Java 8 bytecode) and Gradle 4.4+ for the `core` module
+* Java 8+ and Gradle 4.4+ for `tools` and `examples`
+* Java 11+ and Gradle 4.10+ for the JavaFX-based `wallettemplate`
 * [Gradle](https://gradle.org/) - for building the project
 * [Google Protocol Buffers](https://github.com/google/protobuf) - for use with serialization and hardware communications
-
-Note: Building with Gradle 7 is currently unsupported. See Issue #2112 and Issue #2119.
 
 ### Getting started
 
@@ -59,6 +56,8 @@ You can now run the `wallet-tool` without parameters to get help on its operatio
 To create a test net wallet file in `~/bitcoinj/bitcoinj-test.wallet`, you would use:
 ```
 mkdir ~/bitcoinj
+```
+```
 ./tools/build/install/wallet-tool/bin/wallet-tool --net=TEST --wallet=$HOME/bitcoinj/bitcoinj-test.wallet create
 ```
 

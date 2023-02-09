@@ -56,7 +56,7 @@ import static com.google.common.base.Preconditions.*;
  * <p>Alternatively, you may know that the transaction is "dead", that is, one or more of its inputs have
  * been double spent and will never confirm unless there is another re-org.</p>
  *
- * <p>TransactionConfidence is updated via the {@link TransactionConfidence#incrementDepthInBlocks(int height)}
+ * <p>TransactionConfidence is updated via the {@link TransactionConfidence#incrementDepthInBlocks()}
  * method to ensure the block depth is up to date.</p>
  * To make a copy that won't be changed, use {@link TransactionConfidence#duplicate()}.
  */
@@ -317,8 +317,9 @@ public class TransactionConfidence {
      * Returns a snapshot of {@link PeerAddress}es that announced the transaction.
      */
     public Set<PeerAddress> getBroadcastBy() {
-        ListIterator<PeerAddress> iterator = broadcastBy.listIterator();
-        return Sets.newHashSet(iterator);
+        Set<PeerAddress> broadcastBySet = new HashSet<>();
+        Iterators.addAll(broadcastBySet, broadcastBy.listIterator());
+        return broadcastBySet;
     }
 
     /** Returns true if the given address has been seen via markBroadcastBy() */
@@ -375,11 +376,8 @@ public class TransactionConfidence {
      *
      * @return the new depth
      */
-    public synchronized int incrementDepthInBlocks(int height) {
-        if (getAppearedAtChainHeight() != -1)
-            this.depth = height - getAppearedAtChainHeight() + 1;
-
-        return this.depth;
+    public synchronized int incrementDepthInBlocks() {
+        return ++this.depth;
     }
 
     /**

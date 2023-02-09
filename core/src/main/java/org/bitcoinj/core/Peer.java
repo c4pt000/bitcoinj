@@ -16,8 +16,6 @@
 
 package org.bitcoinj.core;
 
-import com.google.common.base.Objects;
-import com.google.common.collect.Lists;
 import org.bitcoinj.core.listeners.*;
 import org.bitcoinj.net.AbstractTimeoutHandler;
 import org.bitcoinj.net.NioClient;
@@ -66,8 +64,7 @@ import static com.google.common.base.Preconditions.checkState;
  */
 public class Peer extends PeerSocketHandler {
     private static final Logger log = LoggerFactory.getLogger(Peer.class);
-
-    protected final ReentrantLock lock = Threading.lock("peer");
+    protected final ReentrantLock lock = Threading.lock(Peer.class);
 
     private final NetworkParameters params;
     private final AbstractBlockChain blockChain;
@@ -179,18 +176,8 @@ public class Peer extends PeerSocketHandler {
                 }
             }, MoreExecutors.directExecutor());
 
-    /**
-     * <p>Construct a peer that reads/writes from the given block chain.</p>
-     *
-     * <p>Note that this does <b>NOT</b> make a connection to the given remoteAddress, it only creates a handler for a
-     * connection. If you want to create a one-off connection, create a Peer and pass it to
-     * {@link NioClientManager#openConnection(SocketAddress, StreamConnection)}
-     * or
-     * {@link NioClient#NioClient(SocketAddress, StreamConnection, int)}.</p>
-     *
-     * <p>The remoteAddress provided should match the remote address of the peer which is being connected to, and is
-     * used to keep track of which peers relayed transactions and offer more descriptive logging.</p>
-     */
+    /** @deprecated Use {@link #Peer(NetworkParameters, VersionMessage, PeerAddress, AbstractBlockChain)}. */
+    @Deprecated
     public Peer(NetworkParameters params, VersionMessage ver, @Nullable AbstractBlockChain chain, PeerAddress remoteAddress) {
         this(params, ver, remoteAddress, chain);
     }
@@ -493,7 +480,7 @@ public class Peer extends PeerSocketHandler {
         } else if (m instanceof UTXOsMessage) {
             processUTXOMessage((UTXOsMessage) m);
         } else if (m instanceof RejectMessage) {
-            //log.error("{} {}: Received {}", this, getPeerVersionMessage().subVer, m);
+            log.error("{} {}: Received {}", this, getPeerVersionMessage().subVer, m);
         } else if (m instanceof SendHeadersMessage) {
             // We ignore this message, because we don't announce new blocks.
         } else if (m instanceof FeeFilterMessage) {
@@ -882,7 +869,7 @@ public class Peer extends PeerSocketHandler {
         lock.lock();
         try {
             // Build the request for the missing dependencies.
-            List<ListenableFuture<Transaction>> futures = Lists.newArrayList();
+            List<ListenableFuture<Transaction>> futures = new ArrayList<>();
             GetDataMessage getdata = new GetDataMessage(params);
             if (needToRequest.size() > 1)
                 log.info("{}: Requesting {} transactions for depth {} dep resolution", getAddress(), needToRequest.size(), depth + 1);
@@ -898,7 +885,7 @@ public class Peer extends PeerSocketHandler {
                 public void onSuccess(List<Transaction> transactions) {
                     // Once all transactions either were received, or we know there are no more to come ...
                     // Note that transactions will contain "null" for any positions that weren't successful.
-                    List<ListenableFuture<Object>> childFutures = Lists.newLinkedList();
+                    List<ListenableFuture<Object>> childFutures = new LinkedList<>();
                     for (Transaction tx : transactions) {
                         if (tx == null) continue;
                         log.info("{}: Downloaded dependency of {}: {}", getAddress(), rootTxHash, tx.getTxId());
@@ -1423,7 +1410,7 @@ public class Peer extends PeerSocketHandler {
         StoredBlock chainHead = blockChain.getChainHead();
         Sha256Hash chainHeadHash = chainHead.getHeader().getHash();
         // Did we already make this request? If so, don't do it again.
-        if (Objects.equal(lastGetBlocksBegin, chainHeadHash) && Objects.equal(lastGetBlocksEnd, toHash)) {
+        if (Objects.equals(lastGetBlocksBegin, chainHeadHash) && Objects.equals(lastGetBlocksEnd, toHash)) {
             log.info("blockChainDownloadLocked({}): ignoring duplicated request: {}", toHash, chainHeadHash);
             for (Sha256Hash hash : pendingBlockDownloads)
                 log.info("Pending block download: {}", hash);

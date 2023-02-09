@@ -20,11 +20,11 @@ package org.bitcoinj.core;
 @SuppressWarnings("serial")
 public class AddressFormatException extends IllegalArgumentException {
     public AddressFormatException() {
-     //   super();
+        super();
     }
 
     public AddressFormatException(String message) {
-       // super(message);
+        super(message);
     }
 
     /**
@@ -37,7 +37,7 @@ public class AddressFormatException extends IllegalArgumentException {
         public final int position;
 
         public InvalidCharacter(char character, int position) {
-          //  super("Invalid character '" + Character.toString(character) + "' at position " + position);
+            super("Invalid character '" + Character.toString(character) + "' at position " + position);
             this.character = character;
             this.position = position;
         }
@@ -50,11 +50,11 @@ public class AddressFormatException extends IllegalArgumentException {
      */
     public static class InvalidDataLength extends AddressFormatException {
         public InvalidDataLength() {
-           // super();
+            super();
         }
 
         public InvalidDataLength(String message) {
-         //   super(message);
+            super(message);
         }
     }
 
@@ -65,11 +65,25 @@ public class AddressFormatException extends IllegalArgumentException {
      */
     public static class InvalidChecksum extends AddressFormatException {
         public InvalidChecksum() {
-          //  super("Checksum does not validate");
+            super("Checksum does not validate");
         }
 
         public InvalidChecksum(String message) {
-          //  super(message);
+            super(message);
+        }
+    }
+
+    /**
+     * This exception is thrown by {@link SegwitAddress} when you try to decode data and the witness version doesn't
+     * match the Bech32 encoding as per BIP350. You shouldn't allow the user to proceed in this case.
+     */
+    public static class UnexpectedWitnessVersion extends AddressFormatException {
+        public UnexpectedWitnessVersion() {
+            super("Unexpected witness version");
+        }
+
+        public UnexpectedWitnessVersion(String message) {
+            super(message);
         }
     }
 
@@ -80,11 +94,11 @@ public class AddressFormatException extends IllegalArgumentException {
      */
     public static class InvalidPrefix extends AddressFormatException {
         public InvalidPrefix() {
-           // super();
+            super();
         }
 
         public InvalidPrefix(String message) {
-           // super(message);
+            super(message);
         }
     }
 
@@ -96,11 +110,11 @@ public class AddressFormatException extends IllegalArgumentException {
      */
     public static class WrongNetwork extends InvalidPrefix {
         public WrongNetwork(int versionHeader) {
-       //     super("Version code of address did not match acceptable versions for network: " + versionHeader);
+            super("Version code of address did not match acceptable versions for network: " + versionHeader);
         }
 
         public WrongNetwork(String hrp) {
-         //   super("Human readable part of address did not match acceptable HRPs for network: " + hrp);
+            super("Human readable part of address did not match acceptable HRPs for network: " + hrp);
         }
     }
 }
